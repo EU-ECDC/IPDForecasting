@@ -1,0 +1,8 @@
+# History files
+.Rhistory
+
+# R data files from previous sessions
+.Rdata
+
+# Example code from package build process
+*-Ex.R
