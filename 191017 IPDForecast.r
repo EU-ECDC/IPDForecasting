@@ -37,16 +37,19 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 							  Age >= 50 & Age < 65 ~ 4,	# 50-64
 							  Age >= 65 & Age < 75 ~ 5,	# 65-74
 							  Age >= 75 & Age < 85 ~ 6,	# 75-84
-							  Age >= 85 ~ 7),
+							  Age >= 85 ~ 7) %>% 
+							  as_factor(),
 							  
 				  ## Countries
 				  ReportingCountry = case_when(GeoCode == "UKM" ~ "SC",
 											    TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
-							  
-				  ## Serotypes
+				 
+				 ## Serotypes
 				  Serotype = recode(Serotype, "NT" = "UNK",           		 
 											  "NTYP" = "UNK",		   
-											  "O" = "OTHER"),
+											  "O" = "OTHER") %>%
+									as_factor(),
+											  
 				  GroupType = case_when(Serotype == "4"  ~ "PCV7",    # Group serotypes according to vaccine 
 										Serotype == "6B" ~ "PCV7",
 										Serotype == "9V" ~ "PCV7",
@@ -70,7 +73,9 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 										Serotype == "17F" ~ "PPV23",
 										Serotype == "20" ~ "PPV23",
 										Serotype == "22F" ~ "PPV23",
-										Serotype == "OTHER" ~ "OTHER"), 
+										Serotype == "OTHER" ~ "Other") %>%
+										as_factor() %>%
+										fct_explicit_na(na_level = "Not serotyped"), 
 										
 					## Specimen type				   
 					Specimen = recode(Specimen, "JOINT"  = "OTHER",    # Group samples from joint, peritoneal and pleural fluid
@@ -102,8 +107,9 @@ tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy
 										AgeGroupId >= 6   & AgeGroupId <= 12 ~ 3,      # 15-49
 										AgeGroupId >= 13  & AgeGroupId <= 15 ~ 4,      # 50-64
 										AgeGroupId >= 16  & AgeGroupId <= 17 ~ 5,  	   # 65-74
-										AgeGroupId >= 18  & AgeGroupId <= 19 ~ 6,     # 75-84
-										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7)) %>% # 85+
+										AgeGroupId >= 18  & AgeGroupId <= 19 ~ 6,      # 75-84
+										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7) %>% # 85+
+										as_factor()) %>%
 			filter(!is.na(AgeGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
 			rename(Year = ReportYear) %>% # Rename to match with IPDData
 			group_by(Year, ReportingCountry, AgeGroup) %>% # Group population by age groups
@@ -120,14 +126,15 @@ scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrsco
 
 IPDData <- IPDData %>% filter(Classification == "CONF") %>% # Include only confirmed cases
 						left_join(tessyPop) %>%
+						mutate(ReportingCountry = as_factor(ReportingCountry)) %>%
 						arrange(ReportingCountry, Year, AgeGroup) %>%
 						filter(SubsetEpi == 1) # Select subset for epi. to avoid double-counting lab.results
 						
-incData <- IPDData %>% 	group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
+incData <- IPDData %>% 	filter(Age >= 50 & ReportingCountry == "DK") %>%
+						#group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
+						group_by(Year, AgeGroup, GroupType, Population) %>%
 						summarise(Total = n()) %>% # Number of cases per year by age group, type and country
 						mutate(Incidence = (Total/Population)*100000) # Incidence per 100,000	
-
-
 
 
 #########################
@@ -167,3 +174,39 @@ popProjections <- popProjections %>% mutate(year = length(years)) %>%
 								  
 # Interpolate with splines
 
+
+#########################
+## Plot incidence data ##
+#########################
+
+ ## Incidence by country
+  ggplot(data = incData, aes(Year, Incidence)) +
+  geom_bar(stat="identity", aes(fill = GroupType)) +
+  labs(	x = "Year", y = "Incidence per 100,000") +
+  facet_wrap(~ ReportingCountry) + #,  scales = "free_y") +
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=14),
+					  axis.text.x = element_text(size = rel(0.75), angle = 60),
+					  axis.text.x.top = element_text(vjust = -0.5)) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Incidence of IPD in 50+ year olds")) +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+  ## Incidence by country
+  ggplot(data = incData, aes(Year, Incidence)) +
+  geom_line() +
+  labs(	x = "Year", y = "Incidence per 100,000") +
+  facet_grid(rows = vars(GroupType), cols = vars(AgeGroup)) + 
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=14),
+					  axis.text.x = element_text(size = rel(0.75), angle = 60),
+					  axis.text.x.top = element_text(vjust = -0.5)) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Rate of IPD incidence in Denmark")) +
+  theme(plot.title = element_text(hjust = 0.5))
