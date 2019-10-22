@@ -9,21 +9,39 @@ library(timetk)
 library(sweep)
 library(forecast)
 
+myColours <- c("26 107 133", "241 214 118", "168 45 23")
+ECDCcol <- sapply(strsplit(myColours, " "), function(x)
+    rgb(x[1], x[2], x[3], maxColorValue=255))  # convert to hexadecimal
+
+colours1 <- colorRampPalette(ECDCcol)(11)
+
+## List countries
+EEA <- c("AT","BE","BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "UK") 
+countryList <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania","Luxembourg", "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "UK" )
+countries <- tibble(code=EEA, name=countryList)
+countriesScot <- add_row(countries, code = "SC", name = "Scotland")
+
+########################		
+## IPD incidence data ##
+########################
+
 PCVdates <- read_csv("VaccineDates.csv", col_names=TRUE)   # Read in dates of PCV introduction
 
-## Read in and reformat IPD incidence data
 IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 		   mutate(
-				  ## Age groups
+				  ## Age groups. N.B. These must correspond with population groups (see above)
 				  Age = as.integer(Age),
 				  AgeGroup = case_when(Age < 5 ~ 1,		# 0-4
 							  Age >= 5  & Age < 15 ~ 2,	# 5-14
-							  Age >= 15 & Age < 65 ~ 3,	# 15-64
-							  Age >= 65 & Age < 85 ~ 4,	# 65-84
-							  Age >= 85 ~ 5),
+							  Age >= 15 & Age < 50 ~ 3,	# 15-49
+							  Age >= 50 & Age < 65 ~ 4,	# 50-64
+							  Age >= 65 & Age < 75 ~ 5,	# 65-74
+							  Age >= 75 & Age < 85 ~ 6,	# 75-84
+							  Age >= 85 ~ 7),
 							  
 				  ## Countries
-				  ReportingCountry = case_when(GeoCode == "UKM" ~ "SC"), # Recode region 'UKM' as Scotland 
+				  ReportingCountry = case_when(GeoCode == "UKM" ~ "SC",
+											    TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
 							  
 				  ## Serotypes
 				  Serotype = recode(Serotype, "NT" = "UNK",           		 
@@ -51,7 +69,7 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 										Serotype == "15B"  ~ "PPV23",
 										Serotype == "17F" ~ "PPV23",
 										Serotype == "20" ~ "PPV23",
-										Serotype == "22F" ~ "PPV23",		   
+										Serotype == "22F" ~ "PPV23",
 										Serotype == "OTHER" ~ "OTHER"), 
 										
 					## Specimen type				   
@@ -66,31 +84,57 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 									 nchar(DateUsedForStatisticsISO)==4 ~ paste(DateUsedForStatisticsISO,"-01-01",sep=""), # Where no day or month specified, set to 1st of the 1st.
 									 TRUE ~ as.character(Date)),
 				    Date = ymd(Date),
-				    Year = substr(Date,1,4)) %>%    # Define year for matching 
+				    
+					Year = substr(Date,1,4) %>% as.integer()) %>%    # Define year for matching 
 				   
-			select(-DateUsedForStatisticsISO) %>%   # Remove original date variable
+			select(-DateUsedForStatisticsISO)   # Remove original date variable
 			
-			## PCV programmes
-			left_join(PCVdates) %>%										# Add dates of PCV introduction 
-			 mutate(StartPCV1013 = as.Date(StartPCV1013, "%d/%m/%Y"),
-				    StartPCV7 = as.Date(StartPCV7, "%d/%m/%Y"),
-					
-				    TimePeriod = case_when(Date < StartSpID1 ~ 1,				# Before the inclusion period of SpIDnet1
-								Date > StartSpID1   & Date < StartPCV7 ~ 2,		# SpIDnet pre-PCV7 period
-								Date > StartPCV7    & Date < StartPCV1013 ~ 3,	# PCV7 period
-								Date > StartPCV1013 & Date < EndDateSpID1 ~ 4,	# PCV10/13 period
-								Date > EndDateSpID1 ~ 5),
-								
-					PCV1013Yr  = if_else(TimePeriod == 4 | TimePeriod==5,
-											pmax(ceiling((Date - StartPCV1013)/365.25),1),
-											NA_real_))
+firstYear <- IPDData %>% select(Year) %>% min()
+
+#####################
+## Population data ##
+#####################
+
+tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy population data
+		    filter(ReportingCountry %in% EEA & ReportYear >= firstYear) %>%
+			mutate(AgeGroup = case_when(AgeGroupId == 1   | AgeGroupId == 2  ~ 1,      # 0-4
+										AgeGroupId >= 3   & AgeGroupId <= 5  ~ 2,      # 5-14
+										AgeGroupId >= 6   & AgeGroupId <= 12 ~ 3,      # 15-49
+										AgeGroupId >= 13  & AgeGroupId <= 15 ~ 4,      # 50-64
+										AgeGroupId >= 16  & AgeGroupId <= 17 ~ 5,  	   # 65-74
+										AgeGroupId >= 18  & AgeGroupId <= 19 ~ 6,     # 75-84
+										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7)) %>% # 85+
+			filter(!is.na(AgeGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
+			rename(Year = ReportYear) %>% # Rename to match with IPDData
+			group_by(Year, ReportingCountry, AgeGroup) %>% # Group population by age groups
+			summarise(Population = sum(Population))
+	
+# tessyPop %>% group_by(AgeGroupId, AgeGroup) %>% summarise() %>% print(n=63) #Table of TESSy age categories
+
+eurostatPop <- read_csv("EUROSTATpop.csv", col_names=TRUE)   # Read in EUROSTAT population data
+scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrscotland.gov.uk/statistics-and-data/statistics/statistics-by-theme/population/population-estimates/mid-year-population-estimates
+
+###############
+## Incidence ##
+###############
+
+IPDData <- IPDData %>% filter(Classification == "CONF") %>% # Include only confirmed cases
+						left_join(tessyPop) %>%
+						arrange(ReportingCountry, Year, AgeGroup) %>%
+						filter(SubsetEpi == 1) # Select subset for epi. to avoid double-counting lab.results
+						
+incData <- IPDData %>% 	group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
+						summarise(Total = n()) %>% # Number of cases per year by age group, type and country
+						mutate(Incidence = (Total/Population)*100000) # Incidence per 100,000	
 
 
-## Include only confirmed cases
-IPDData <- IPDData %>% filter(Classification == "CONF")  
-				   
 
-## Read in data for predictor variables
+
+#########################
+## Predictor variables ##
+#########################
+
+## Read in data on predictor variables
 prop0to14 <- read_csv("prop0to14.csv", col_names=TRUE)   # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
 prop65plus <- read_csv("prop65plus.csv", col_names=TRUE) # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
 prop80plus <- read_csv("prop80plus.csv", col_names=TRUE) # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
@@ -100,10 +144,6 @@ PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) # Read in WHO PCV7 cove
 PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) # Read in WHO PCV13 coverage data
 PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 coverage data
 PCV13AData <- read_csv("PCV13Acoverage.csv", col_names=TRUE) # Read in coverage data for PCV13 in adults
-
-EEA <- c("AT","BE","BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "UK") 
-countryList <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania","Luxembourg", "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "UK" )
-countries <- tibble(code=EEA, name=countryList)
 
 ## Reformat predictor variables
 
@@ -126,5 +166,4 @@ popProjections <- popProjections %>% mutate(year = length(years)) %>%
 								  left_join(popProjections)
 								  
 # Interpolate with splines
-
 
