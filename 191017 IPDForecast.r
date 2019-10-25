@@ -38,7 +38,7 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 							  Age >= 65 & Age < 75 ~ 5,	# 65-74
 							  Age >= 75 & Age < 85 ~ 6,	# 75-84
 							  Age >= 85 ~ 7) %>% 
-							  as_factor(),
+							  factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+")),
 							  
 				  ## Countries
 				  ReportingCountry = case_when(GeoCode == "UKM" ~ "SC",
@@ -50,29 +50,29 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 											  "O" = "OTHER") %>%
 									as_factor(),
 											  
-				  GroupType = case_when(Serotype == "4"  ~ "PCV7",    # Group serotypes according to vaccine 
-										Serotype == "6B" ~ "PCV7",
-										Serotype == "9V" ~ "PCV7",
-										Serotype == "14"  ~ "PCV7",
-										Serotype == "18C" ~ "PCV7",
-										Serotype ==  "19F" ~ "PCV7",
-										Serotype == "23F" ~ "PCV7",
-										Serotype == "1" ~ "PCV10",
-										Serotype == "5" ~ "PCV10",
-										Serotype == "7F" ~ "PCV10",
-										Serotype == "3" ~ "PCV13",
-										Serotype == "6A" ~ "PCV13",
-										Serotype == "19A" ~ "PCV13",
-										Serotype == "2"  ~ "PPV23",
-										Serotype == "8" ~ "PPV23",
-										Serotype == "9N" ~ "PPV23",
-										Serotype == "10A" ~ "PPV23",
-										Serotype == "11A" ~ "PPV23",
-										Serotype == "12F" ~ "PPV23",
-										Serotype == "15B"  ~ "PPV23",
-										Serotype == "17F" ~ "PPV23",
-										Serotype == "20" ~ "PPV23",
-										Serotype == "22F" ~ "PPV23",
+				  GroupType = case_when(Serotype == "4"  ~ "PCV-7",    # Group serotypes according to vaccine 
+										Serotype == "6B" ~ "PCV-7",
+										Serotype == "9V" ~ "PCV-7",
+										Serotype == "14"  ~ "PCV-7",
+										Serotype == "18C" ~ "PCV-7",
+										Serotype ==  "19F" ~ "PCV-7",
+										Serotype == "23F" ~ "PCV-7",
+										Serotype == "1" ~ "PCV-10",
+										Serotype == "5" ~ "PCV-10",
+										Serotype == "7F" ~ "PCV-10",
+										Serotype == "3" ~ "PCV-13",
+										Serotype == "6A" ~ "PCV-13",
+										Serotype == "19A" ~ "PCV-13",
+										Serotype == "2"  ~ "PPV-23",
+										Serotype == "8" ~ "PPV-23",
+										Serotype == "9N" ~ "PPV-23",
+										Serotype == "10A" ~ "PPV-23",
+										Serotype == "11A" ~ "PPV-23",
+										Serotype == "12F" ~ "PPV-23",
+										Serotype == "15B"  ~ "PPV-23",
+										Serotype == "17F" ~ "PPV-23",
+										Serotype == "20" ~ "PPV-23",
+										Serotype == "22F" ~ "PPV-23",
 										Serotype == "OTHER" ~ "Other") %>%
 										as_factor() %>%
 										fct_explicit_na(na_level = "Not serotyped"), 
@@ -109,7 +109,7 @@ tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy
 										AgeGroupId >= 16  & AgeGroupId <= 17 ~ 5,  	   # 65-74
 										AgeGroupId >= 18  & AgeGroupId <= 19 ~ 6,      # 75-84
 										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7) %>% # 85+
-										as_factor()) %>%
+										factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+"))) %>%
 			filter(!is.na(AgeGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
 			rename(Year = ReportYear) %>% # Rename to match with IPDData
 			group_by(Year, ReportingCountry, AgeGroup) %>% # Group population by age groups
@@ -129,13 +129,70 @@ IPDData <- IPDData %>% filter(Classification == "CONF") %>% # Include only confi
 						mutate(ReportingCountry = as_factor(ReportingCountry)) %>%
 						arrange(ReportingCountry, Year, AgeGroup) %>%
 						filter(SubsetEpi == 1) # Select subset for epi. to avoid double-counting lab.results
-						
-incData <- IPDData %>% 	filter(Age >= 50 & ReportingCountry == "DK") %>%
-						#group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
-						group_by(Year, AgeGroup, GroupType, Population) %>%
+
+		
+incData <- IPDData %>% 	filter(Age >= 50)  %>%
+						group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
+						#group_by(Year, AgeGroup, GroupType, Population) %>%
 						summarise(Total = n()) %>% # Number of cases per year by age group, type and country
 						mutate(Incidence = (Total/Population)*100000) # Incidence per 100,000	
 
+
+## Incidence by country
+  ggplot(data = incData, aes(Year, Incidence)) +
+  geom_line(lwd = 0.7) +
+  labs(x = "Year", y = "Incidence per 100,000") +
+  facet_grid(GroupType ~ AgeGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE) ,  scales = "free_y") + 
+  scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  panel.spacing.x = unit(1, "lines"),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=12),
+					  axis.text.x = element_text(size = rel(0.8)),
+					  axis.text.x.top = element_text(vjust = -0.5),
+					  strip.text.x = element_text(size=12, colour="white"),
+					  strip.text.y = element_text(size=12, colour="white"),
+					  strip.background = element_rect(fill=ECDCcol[1])) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Rate of IPD incidence in", countries$name[countryNo])) +
+  theme(plot.title = element_text(hjust = 0.5))
+  
+############################
+## Proportion of serotype ##
+############################
+
+# Proportion of outcome by serotype
+propTypes <- incData %>% filter(GroupType != "Not serotyped") %>% # 
+			   group_by(ReportingCountry, Year, AgeGroup, GroupType) %>%
+               dplyr::summarise(n = sum(Total)) %>%
+			   mutate(freq = n / sum(n))
+			   
+countryNo <- 9
+propTypes1 <- propTypes %>% filter(ReportingCountry == countries$code[countryNo])
+
+## Trends in proportion of types, by country
+ggplot(data = propTypes1, aes(Year, freq)) +
+  geom_line(lwd = 0.7) +
+  labs(x = "Year", y = "Proportion of typed samples") +
+  facet_grid(GroupType ~ AgeGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  panel.spacing = unit(1, "lines"),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=12),
+					  axis.text.x = element_text(size = rel(0.8)),
+					  axis.text.x.top = element_text(vjust = -0.5),
+					  strip.text.x = element_text(size=12, colour="white"),
+					  strip.text.y = element_text(size=12, colour="white"),
+					  strip.background = element_rect(fill=ECDCcol[1])) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Proportion of typed samples (", countries$name[countryNo], ")")) +
+  theme(plot.title = element_text(hjust = 0.5))
+  
 
 #########################
 ## Predictor variables ##
@@ -195,18 +252,3 @@ popProjections <- popProjections %>% mutate(year = length(years)) %>%
   ggtitle(paste("Incidence of IPD in 50+ year olds")) +
   theme(plot.title = element_text(hjust = 0.5))
   
-  ## Incidence by country
-  ggplot(data = incData, aes(Year, Incidence)) +
-  geom_line() +
-  labs(	x = "Year", y = "Incidence per 100,000") +
-  facet_grid(rows = vars(GroupType), cols = vars(AgeGroup)) + 
-  theme(panel.grid.major = element_blank(), 
-					  panel.grid.minor = element_blank(), 
-					  panel.background = element_blank(),
-					  axis.line = element_line(colour = "black"),
-					  text = element_text(size=14),
-					  axis.text.x = element_text(size = rel(0.75), angle = 60),
-					  axis.text.x.top = element_text(vjust = -0.5)) +
-					  guides(fill=guide_legend(title="Vaccine type")) +
-  ggtitle(paste("Rate of IPD incidence in Denmark")) +
-  theme(plot.title = element_text(hjust = 0.5))
