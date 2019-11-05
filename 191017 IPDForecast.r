@@ -217,20 +217,47 @@ childcare0to2 <- gather(childcare0to2, countries$name, key="country", value="chi
 				 mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
 
 
+# Age group proportions
+prop0to14 <- gather(prop0to14, countries$name, key="country", value="prop0to14") %>%
+				 select(country, year, prop0to14)
+
+prop65plus <- gather(prop65plus, countries$name, key="country", value="prop65plus") %>%
+				 select(country, year, prop65plus)
+				 
+prop80plus <- gather(prop80plus, countries$name, key="country", value="prop80plus") %>%
+				 select(country, year, prop80plus)
+				 
+popProportions <- left_join(prop0to14, prop65plus) %>%
+					left_join(prop80plus)
+				 
 # Population projections
-# Interpolate for single year predictions
-
+# First interpolate for single year predictions
 # Timeframe for projections
-years <- seq(min(popProjections$year), max(popProjections$year))
+years <- seq(2019, max(popProjections$year))
 
-# Generate rows with missing numbers
+# Interpolate missing years in projections with splines
 popProjections <- popProjections %>% mutate(year = length(years)) %>% 
 								  group_by(country) %>% 
 								  expand(year = years) %>%
-								  left_join(popProjections)
+								  left_join(popProjections) %>%
+								  mutate(prop0to14_int = spline(x=year, y=prop0to14, xout=year)$y,
+										 prop65plus_int = spline(x=year, y=prop65plus, xout=year)$y,
+										 prop80plus_int = spline(x=year, y=prop80plus, xout=year)$y) %>%
+								  ungroup()
 								  
-# Interpolate with splines
+popProportions <- bind_rows(popProportions, popProjections) %>% 
+					arrange(country,year) 
+					
+popProportions <- popProportions %>%
+					mutate(prop0to14_int  = case_when(year <= 2018 ~ prop0to14,
+														TRUE ~ prop0to14_int),
+						   prop65plus_int = case_when(year <= 2018 ~ prop65plus,
+														TRUE ~ prop65plus_int),
+						   prop80plus_int = case_when(year <= 2018 ~ prop80plus,
+														TRUE ~ prop80plus_int)) 
 
+ggplot(data = popProportions, aes(x=year)) +
+  geom_line(aes(y=prop0to14_int), col=ECDCcol[1])
 
 #########################
 ## Plot incidence data ##
