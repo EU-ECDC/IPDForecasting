@@ -198,26 +198,11 @@ ggplot(data = propTypes1, aes(Year, freq)) +
 ## Predictor variables ##
 #########################
 
-## Read in data on predictor variables
-prop0to14 <- read_csv("prop0to14.csv", col_names=TRUE)   # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
-prop65plus <- read_csv("prop65plus.csv", col_names=TRUE) # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
-prop80plus <- read_csv("prop80plus.csv", col_names=TRUE) # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
-popProjections <- read_csv("popProjections.csv", col_names=TRUE) # Source: UN DESA World Population Prospects 2019 https://population.un.org/wpp/Download/Probabilistic/Population/
-childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE)   # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
-PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) # Read in WHO PCV7 coverage data
-PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) # Read in WHO PCV13 coverage data
-PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 coverage data
-PCV13AData <- read_csv("PCV13Acoverage.csv", col_names=TRUE) # Read in coverage data for PCV13 in adults
+## Population proportions by age group. Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00010/default/table?lang=en
+prop0to14 <- read_csv("prop0to14.csv", col_names=TRUE)   # Proportion of population aged 0 to 14
+prop65plus <- read_csv("prop65plus.csv", col_names=TRUE) # Proportion of population aged over 65
+prop80plus <- read_csv("prop80plus.csv", col_names=TRUE) # Proportion of population aged over 80
 
-## Reformat predictor variables
-
-# Childcare	
-childcare0to2 <- gather(childcare0to2, countries$name, key="country", value="childcare0to2") %>%
-				 select(country, year, childcare0to2) %>%
-				 mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
-
-
-# Age group proportions
 prop0to14 <- gather(prop0to14, countries$name, key="country", value="prop0to14") %>%
 				 select(country, year, prop0to14)
 
@@ -233,7 +218,8 @@ popProportions <- left_join(prop0to14, prop65plus) %>%
 # Population projections
 # First interpolate for single year predictions
 # Timeframe for projections
-years <- seq(2019, max(popProjections$year))
+popProjections <- read_csv("popProjections.csv", col_names=TRUE) # Source: UN DESA World Population Prospects 2019 https://population.un.org/wpp/Download/Probabilistic/Population/
+years <- seq(2019, max(popProjections$year)) # Extrapolate to 2019 (current year)
 
 # Interpolate missing years in projections with splines
 popProjections <- popProjections %>% mutate(year = length(years)) %>% 
@@ -258,6 +244,50 @@ popProportions <- popProportions %>%
 
 ggplot(data = popProportions, aes(x=year)) +
   geom_line(aes(y=prop0to14_int), col=ECDCcol[1])
+
+# Proportion of children under three not in formal childcare
+childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
+					gather(countries$name, key="country", value="childcare0to2") %>%
+					select(country, year, childcare0to2) %>%
+					mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
+				 
+# PCV coverage 
+PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) # Read in WHO PCV7 coverage data
+PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) # Read in WHO PCV13 coverage data
+PCV13AData <- read_csv("PCV13Acoverage.csv", col_names=TRUE) # Read in coverage data for PCV13 in adults
+
+# PPV coverage
+PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 coverage data
+
+# Influenza vaccination coverage
+# Sources: https://www.ecdc.europa.eu/en/publications-data/seasonal-influenza-vaccination-europe-vaccination-recommendations-and-coverage-2007-2015 
+# https://www.ecdc.europa.eu/sites/portal/files/documents/Seasonal-influenza-antiviral-use-EU-EEA-Member-States-December-2018_0.pdf 
+# N.B. UK is population weighted average of four regions
+fluCov55A <- read_csv("fluCov55A.csv", col_names=TRUE) %>%
+			gather(countries$name, key="country", value="fluCov55A") %>%
+			select(country, year, fluCov55A)	# influenza vaccination coverage in over 55s, administrative sample
+			
+fluCov59A <- read_csv("fluCov59A.csv", col_names=TRUE) %>%
+			gather(countries$name, key="country", value="fluCov59A") %>%
+			select(country, year, fluCov59A)	# influenza vaccination coverage in over 59s, administrative sample
+			
+fluCov60A <- read_csv("fluCov60A.csv", col_names=TRUE) %>%
+			gather(countries$name, key="country", value="fluCov60A") %>%
+			select(country, year, fluCov60A)	# influenza vaccination coverage in over 60s, administrative sample
+			
+fluCov60S <- read_csv("fluCov60S.csv", col_names=TRUE)  %>%
+			gather(countries$name, key="country", value="fluCov60S") %>%
+			select(country, year, fluCov60S)	# influenza vaccination coverage in over 60s, survey sample
+
+fluCov65A <- read_csv("fluCov65A.csv", col_names=TRUE) %>%
+			gather(countries$name, key="country", value="fluCov65A") %>%
+			select(country, year, fluCov65A)	# influenza vaccination coverage in over 65s, administrative sample
+
+fluCov65S <- read_csv("fluCov65S.csv", col_names=TRUE) %>%
+			gather(countries$name, key="country", value="fluCov65S") %>%
+			select(country, year, fluCov65S)	# influenza vaccination coverage in over 65s, survey sample
+
+
 
 #########################
 ## Plot incidence data ##
