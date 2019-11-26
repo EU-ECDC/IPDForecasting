@@ -137,6 +137,7 @@ incData <- IPDData %>% 	filter(Age >= 50)  %>%
 						summarise(Total = n()) %>% # Number of cases per year by age group, type and country
 						mutate(Incidence = (Total/Population)*100000) # Incidence per 100,000	
 
+countryNo <- 9
 
 ## Incidence by country
   ggplot(data = incData, aes(Year, Incidence)) +
@@ -169,7 +170,7 @@ propTypes <- incData %>% filter(GroupType != "Not serotyped") %>% #
                dplyr::summarise(n = sum(Total)) %>%
 			   mutate(freq = n / sum(n))
 			   
-countryNo <- 9
+
 propTypes1 <- propTypes %>% filter(ReportingCountry == countries$code[countryNo])
 
 ## Trends in proportion of types, by country
@@ -226,9 +227,15 @@ popProjections <- popProjections %>% mutate(year = length(years)) %>%
 								  group_by(country) %>% 
 								  expand(year = years) %>%
 								  left_join(popProjections) %>%
-								  mutate(prop0to14_int = spline(x=year, y=prop0to14, xout=year)$y,
+								  mutate(prop0to14_L95_int = spline(x=year, y=prop0to14_L95, xout=year)$y,
+										 prop0to14_int = spline(x=year, y=prop0to14, xout=year)$y,
+										 prop0to14_U95_int = spline(x=year, y=prop0to14_U95, xout=year)$y,
+										 prop65plus_L95_int = spline(x=year, y=prop65plus_L95, xout=year)$y,
 										 prop65plus_int = spline(x=year, y=prop65plus, xout=year)$y,
-										 prop80plus_int = spline(x=year, y=prop80plus, xout=year)$y) %>%
+										 prop65plus_U95_int = spline(x=year, y=prop65plus_U95, xout=year)$y,
+										 prop80plus_L95_int = spline(x=year, y=prop80plus_L95, xout=year)$y,
+										 prop80plus_int = spline(x=year, y=prop80plus, xout=year)$y,
+										 prop80plus_U95_int = spline(x=year, y=prop80plus_U95, xout=year)$y) %>%
 								  ungroup()
 								  
 popProportions <- bind_rows(popProportions, popProjections) %>% 
@@ -242,20 +249,139 @@ popProportions <- popProportions %>%
 						   prop80plus_int = case_when(year <= 2018 ~ prop80plus,
 														TRUE ~ prop80plus_int)) 
 
+# Plot proportion aged 0-14
 ggplot(data = popProportions, aes(x=year)) +
-  geom_line(aes(y=prop0to14_int), col=ECDCcol[1])
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_line(aes(y=prop0to14_int), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=prop0to14_L95_int, ymax=prop0to14_U95_int), fill=ECDCcol[1], alpha=.5) +
+   ylim(0,25)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of population aged 0 to 14", y = "")
+
+# Plot proportion aged 65 plus
+ggplot(data = popProportions, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_line(aes(y=prop65plus_int), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=prop65plus_L95_int, ymax=prop65plus_U95_int), fill=ECDCcol[1], alpha=.5) +
+   ylim(0,60)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of population aged over 65", y = "")
+
+
+# Plot proportion aged 80 plus
+ggplot(data = popProportions, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_line(aes(y=prop80plus_int), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=prop80plus_L95_int, ymax=prop80plus_U95_int), fill=ECDCcol[1], alpha=.5) +
+   ylim(0,30)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of population aged over 80", y = "")
 
 # Proportion of children under three not in formal childcare
 childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
 					gather(countries$name, key="country", value="childcare0to2") %>%
 					select(country, year, childcare0to2) %>%
 					mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
-				 
-# PCV coverage 
-PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) # Read in WHO PCV7 coverage data
-PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) # Read in WHO PCV13 coverage data
-PCV13AData <- read_csv("PCV13Acoverage.csv", col_names=TRUE) # Read in coverage data for PCV13 in adults
 
+ggplot(data = childcare0to2, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_line(aes(y=childcare0to2), col=ECDCcol[1]) +
+  ylim(0,100)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
+  		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
+
+					
+# PCV coverage 
+PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 coverage data
+				melt() %>%
+				as_tibble() %>%
+				rename(year = variable, coverage = value) %>%
+				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
+				arrange(country) 
+
+PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 coverage data
+				melt() %>%
+				as_tibble() %>%
+				rename(year = variable, coverage = value) %>%
+				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
+				arrange(country) 		
+
+PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 coverage data
+				melt() %>%
+				as_tibble() %>%
+				rename(year = variable, coverage = value) %>%
+				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
+				arrange(country) 
+				
+ggplot(data = PCV7Data, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	#ylim(0,50)+
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "PCV7 coverage in children", y = "")
+
+ggplot(data = PCV10Data, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "PCV10 coverage in children", y = "")
+					
+ggplot(data = PCV13Data, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "PCV13 coverage in children", y = "")
+										
+					
 # PPV coverage
 PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 coverage data
 
@@ -265,29 +391,86 @@ PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 cover
 # N.B. UK is population weighted average of four regions
 fluCov55A <- read_csv("fluCov55A.csv", col_names=TRUE) %>%
 			gather(countries$name, key="country", value="fluCov55A") %>%
-			select(country, year, fluCov55A)	# influenza vaccination coverage in over 55s, administrative sample
+			select(country, year, fluCov55A) %>%	# influenza vaccination coverage in over 55s, administrative sample
+			mutate(country = as_factor(country))
 			
 fluCov59A <- read_csv("fluCov59A.csv", col_names=TRUE) %>%
 			gather(countries$name, key="country", value="fluCov59A") %>%
-			select(country, year, fluCov59A)	# influenza vaccination coverage in over 59s, administrative sample
+			select(country, year, fluCov59A) %>%	# influenza vaccination coverage in over 59s, administrative sample
+			mutate(country = as_factor(country))
 			
 fluCov60A <- read_csv("fluCov60A.csv", col_names=TRUE) %>%
 			gather(countries$name, key="country", value="fluCov60A") %>%
-			select(country, year, fluCov60A)	# influenza vaccination coverage in over 60s, administrative sample
-			
+			select(country, year, fluCov60A) %>%	# influenza vaccination coverage in over 60s, administrative sample
+			mutate(country = as_factor(country))
+						
 fluCov60S <- read_csv("fluCov60S.csv", col_names=TRUE)  %>%
 			gather(countries$name, key="country", value="fluCov60S") %>%
-			select(country, year, fluCov60S)	# influenza vaccination coverage in over 60s, survey sample
-
+			select(country, year, fluCov60S) %>%	# influenza vaccination coverage in over 60s, survey sample
+			mutate(country = as_factor(country))
+			
 fluCov65A <- read_csv("fluCov65A.csv", col_names=TRUE) %>%
 			gather(countries$name, key="country", value="fluCov65A") %>%
-			select(country, year, fluCov65A)	# influenza vaccination coverage in over 65s, administrative sample
-
+			select(country, year, fluCov65A) %>%	# influenza vaccination coverage in over 65s, administrative sample
+			mutate(country = as_factor(country))
+			
 fluCov65S <- read_csv("fluCov65S.csv", col_names=TRUE) %>%
 			gather(countries$name, key="country", value="fluCov65S") %>%
-			select(country, year, fluCov65S)	# influenza vaccination coverage in over 65s, survey sample
+			select(country, year, fluCov65S) %>%	# influenza vaccination coverage in over 65s, survey sample
+			mutate(country = as_factor(country))
 
+fluCoverage <- left_join(fluCov55A, fluCov59A, by = c("country", "year")) %>%
+			   left_join(fluCov60A, by = c("country", "year")) %>%
+			   left_join(fluCov60S, by = c("country", "year")) %>%
+			   left_join(fluCov65A, by = c("country", "year")) %>%
+			   left_join(fluCov65S, by = c("country", "year")) %>%
+			   filter(country != "Liechtenstein") %>%
+			   mutate(newCov65A = sum(fluCov55A, fluCov60A, fluCov65A))
+			
+			
+# Plot influenza vaccination coverage data			
+ggplot(data = fluCoverage, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=fluCov65A), col=ECDCcol[1]) +
+	geom_line(aes(y=fluCov65S), col=ECDCcol[2]) +
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "Influenza vaccination coverage in the over 65s", y = "")
 
+ggplot(data = fluCov60A, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=fluCov60A), col=ECDCcol[1]) +
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "Influenza vaccination coverage in the over 60s", y = "")
+	
+ggplot(data = fluCov65A, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=fluCov65A), col=ECDCcol[1]) +
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "Influenza vaccination coverage in the over 65s", y = "")	
 
 #########################
 ## Plot incidence data ##
