@@ -247,7 +247,8 @@ popProportions <- popProportions %>%
 						   prop65plus_int = case_when(year <= 2018 ~ prop65plus,
 														TRUE ~ prop65plus_int),
 						   prop80plus_int = case_when(year <= 2018 ~ prop80plus,
-														TRUE ~ prop80plus_int)) 
+														TRUE ~ prop80plus_int)) %>%
+					filter(country != "Liechtenstein")
 
 # Plot proportion aged 0-14
 ggplot(data = popProportions, aes(x=year)) +
@@ -261,6 +262,7 @@ ggplot(data = popProportions, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
 		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of population aged 0 to 14", y = "")
 
@@ -276,6 +278,7 @@ ggplot(data = popProportions, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
 		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of population aged over 65", y = "")
 
@@ -292,6 +295,7 @@ ggplot(data = popProportions, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
 		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of population aged over 80", y = "")
 
@@ -311,7 +315,7 @@ ggplot(data = childcare0to2, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
+		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
   		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
 
@@ -425,52 +429,79 @@ fluCoverage <- left_join(fluCov55A, fluCov59A, by = c("country", "year")) %>%
 			   left_join(fluCov65A, by = c("country", "year")) %>%
 			   left_join(fluCov65S, by = c("country", "year")) %>%
 			   filter(country != "Liechtenstein") %>%
-			   mutate(newCov65A = sum(fluCov55A, fluCov60A, fluCov65A))
+			   rowwise() %>% 
+			   mutate(sumCov59 = sum(fluCov55A,fluCov59A, na.rm=TRUE)) %>%
+			   mutate(sumCov60 = sum(fluCov55A,fluCov59A,fluCov60A, na.rm=TRUE)) %>%
+     		   mutate(sumCov65 = sum(fluCov55A,fluCov59A,fluCov60A,fluCov65A, na.rm=TRUE)) 
+			   
+fluCoverage[fluCoverage == 0] <- NA
 			
 			
-# Plot influenza vaccination coverage data			
+# Plot influenza vaccination coverage data	
 ggplot(data = fluCoverage, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=fluCov65A), col=ECDCcol[1]) +
-	geom_line(aes(y=fluCov65S), col=ECDCcol[2]) +
+	geom_line(aes(y=fluCov55A), col=ECDCcol[1]) +
+	ylim(0,100)+
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
 	theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
+		text = element_text(size=12),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
 		guides(fill=guide_legend(title=""))+
-	labs(title = "Influenza vaccination coverage in the over 65s", y = "")
+	labs(title = "Seasonal influenza vaccination coverage in 55-58 year olds", y = "")
 
-ggplot(data = fluCov60A, aes(x=year)) +
+ggplot(data = fluCoverage, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=fluCov60A), col=ECDCcol[1]) +
+	geom_line(aes(y=sumCov59), col=ECDCcol[1]) +
+	ylim(0,100)+
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
 	theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
+		text = element_text(size=12),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
 		guides(fill=guide_legend(title=""))+
-	labs(title = "Influenza vaccination coverage in the over 60s", y = "")
-	
-ggplot(data = fluCov65A, aes(x=year)) +
+	labs(title = "Seasonal influenza vaccination coverage in 59 year olds", y = "")
+
+ggplot(data = fluCoverage, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=fluCov65A), col=ECDCcol[1]) +
+	geom_line(aes(y=sumCov60), col=ECDCcol[1]) +
+	ylim(0,100)+
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
 	theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
+		text = element_text(size=12),
 		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
 		guides(fill=guide_legend(title=""))+
-	labs(title = "Influenza vaccination coverage in the over 65s", y = "")	
+	labs(title = "Seasonal influenza vaccination coverage in 60-64 year olds", y = "")
+
+ggplot(data = fluCoverage, aes(x=year)) +
+	facet_wrap(~country) +
+	geom_line(aes(y=sumCov65), col=ECDCcol[1]) +
+	ylim(0,100)+
+	scale_color_manual(values = colours1, guide = FALSE) +
+	scale_fill_manual(values = colours1, guide = FALSE) +
+	theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=12),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
+		guides(fill=guide_legend(title=""))+
+	labs(title = "Seasonal influenza vaccination coverage in the over 65s", y = "")
+		
 
 #########################
 ## Plot incidence data ##
