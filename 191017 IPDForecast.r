@@ -42,7 +42,7 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 							  
 				  ## Countries
 				  country = case_when(GeoCode == "UKM" ~ "SC",
-											    TRUE ~ as.character(country)), # Recode region 'UKM' as Scotland 
+											    TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
 				 
 				 ## Serotypes
 				  serotype = recode(Serotype, "NT" = "UNK",           		 
@@ -87,10 +87,10 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 					date = as.Date(DateUsedForStatisticsISO, "%Y-%m-%d"),  # Convert to date format
 					date = case_when(nchar(DateUsedForStatisticsISO)==7 ~ paste(DateUsedForStatisticsISO,"-01",sep=""),    # Where no day specified, set to 1st.
 									 nchar(DateUsedForStatisticsISO)==4 ~ paste(DateUsedForStatisticsISO,"-01-01",sep=""), # Where no day or month specified, set to 1st of the 1st.
-									 TRUE ~ as.character(Date)),
-				    date = ymd(Date),
+									 TRUE ~ as.character(date)),
+				    date = ymd(date),
 				    
-					year = substr(Date,1,4) %>% as.integer()) %>%    # Define year for matching 
+					year = substr(date,1,4) %>% as.integer()) %>%    # Define year for matching 
 				   
 			select(-DateUsedForStatisticsISO)   # Remove original date variable
 			
@@ -101,7 +101,7 @@ firstYear <- IPDData %>% select(year) %>% min()
 #####################
 
 tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy population data
-		    filter(country %in% EEA & ReportYear >= firstYear) %>%
+		    filter(ReportingCountry %in% EEA & ReportYear >= firstYear) %>%
 			mutate(ageGroup = case_when(AgeGroupId == 1   | AgeGroupId == 2  ~ 1,      # 0-4
 										AgeGroupId >= 3   & AgeGroupId <= 5  ~ 2,      # 5-14
 										AgeGroupId >= 6   & AgeGroupId <= 12 ~ 3,      # 15-49
@@ -111,9 +111,9 @@ tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy
 										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7) %>% # 85+
 										factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+"))) %>%
 			filter(!is.na(ageGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
-			rename(year = reportyear) %>% # Rename to match with IPDData
+			rename(year = ReportYear, country = ReportingCountry) %>% # Rename to match with IPDData
 			group_by(year, country, ageGroup) %>% # Group population by age groups
-			summarise(population = sum(population))
+			summarise(population = sum(Population))
 	
 # tessyPop %>% group_by(AgeGroupId, ageGroup) %>% summarise() %>% print(n=63) #Table of TESSy age categories
 
@@ -135,7 +135,7 @@ incData <- IPDData %>% 	filter(age >= 50)  %>%
 						group_by(country, year, ageGroup, groupType, population) %>%
 						#group_by(year, ageGroup, groupType, Population) %>%
 						summarise(total = n()) %>% # Number of cases per year by age group, type and country
-						mutate(incidence = (total/population)*100000) %>% # Incidence per 100,000	
+						mutate(incidence = (total/population)*100000)  # Incidence per 100,000	
 						
 countryNo <- 9
 
