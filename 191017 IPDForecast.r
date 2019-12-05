@@ -5,9 +5,9 @@ library(plyr)
 library(tidyverse)
 library(lubridate)
 library(reshape2)
-library(timetk)
-library(sweep)
-library(forecast)
+library(tsibble)
+library(fable)
+library(feasts)
 
 myColours <- c("26 107 133", "241 214 118", "168 45 23")
 ECDCcol <- sapply(strsplit(myColours, " "), function(x)
@@ -30,79 +30,79 @@ PCVdates <- read_csv("VaccineDates.csv", col_names=TRUE)   # Read in dates of PC
 IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 		   mutate(
 				  ## Age groups. N.B. These must correspond with population groups (see above)
-				  Age = as.integer(Age),
-				  AgeGroup = case_when(Age < 5 ~ 1,		# 0-4
-							  Age >= 5  & Age < 15 ~ 2,	# 5-14
-							  Age >= 15 & Age < 50 ~ 3,	# 15-49
-							  Age >= 50 & Age < 65 ~ 4,	# 50-64
-							  Age >= 65 & Age < 75 ~ 5,	# 65-74
-							  Age >= 75 & Age < 85 ~ 6,	# 75-84
-							  Age >= 85 ~ 7) %>% 
+				  age = as.integer(Age),
+				  ageGroup = case_when(age < 5 ~ 1,		# 0-4
+							  age >= 5  & age < 15 ~ 2,	# 5-14
+							  age >= 15 & age < 50 ~ 3,	# 15-49
+							  age >= 50 & age < 65 ~ 4,	# 50-64
+							  age >= 65 & age < 75 ~ 5,	# 65-74
+							  age >= 75 & age < 85 ~ 6,	# 75-84
+							  age >= 85 ~ 7) %>% 
 							  factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+")),
 							  
 				  ## Countries
-				  ReportingCountry = case_when(GeoCode == "UKM" ~ "SC",
-											    TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
+				  country = case_when(GeoCode == "UKM" ~ "SC",
+											    TRUE ~ as.character(country)), # Recode region 'UKM' as Scotland 
 				 
 				 ## Serotypes
-				  Serotype = recode(Serotype, "NT" = "UNK",           		 
+				  serotype = recode(Serotype, "NT" = "UNK",           		 
 											  "NTYP" = "UNK",		   
 											  "O" = "OTHER") %>%
 									as_factor(),
 											  
-				  GroupType = case_when(Serotype == "4"  ~ "PCV-7",    # Group serotypes according to vaccine 
-										Serotype == "6B" ~ "PCV-7",
-										Serotype == "9V" ~ "PCV-7",
-										Serotype == "14"  ~ "PCV-7",
-										Serotype == "18C" ~ "PCV-7",
-										Serotype ==  "19F" ~ "PCV-7",
-										Serotype == "23F" ~ "PCV-7",
-										Serotype == "1" ~ "PCV-10",
-										Serotype == "5" ~ "PCV-10",
-										Serotype == "7F" ~ "PCV-10",
-										Serotype == "3" ~ "PCV-13",
-										Serotype == "6A" ~ "PCV-13",
-										Serotype == "19A" ~ "PCV-13",
-										Serotype == "2"  ~ "PPV-23",
-										Serotype == "8" ~ "PPV-23",
-										Serotype == "9N" ~ "PPV-23",
-										Serotype == "10A" ~ "PPV-23",
-										Serotype == "11A" ~ "PPV-23",
-										Serotype == "12F" ~ "PPV-23",
-										Serotype == "15B"  ~ "PPV-23",
-										Serotype == "17F" ~ "PPV-23",
-										Serotype == "20" ~ "PPV-23",
-										Serotype == "22F" ~ "PPV-23",
-										Serotype == "OTHER" ~ "Other") %>%
+				  groupType = case_when(serotype == "4"  ~ "PCV-7",    # Group serotypes according to vaccine 
+										serotype == "6B" ~ "PCV-7",
+										serotype == "9V" ~ "PCV-7",
+										serotype == "14"  ~ "PCV-7",
+										serotype == "18C" ~ "PCV-7",
+										serotype ==  "19F" ~ "PCV-7",
+										serotype == "23F" ~ "PCV-7",
+										serotype == "1" ~ "PCV-10",
+										serotype == "5" ~ "PCV-10",
+										serotype == "7F" ~ "PCV-10",
+										serotype == "3" ~ "PCV-13",
+										serotype == "6A" ~ "PCV-13",
+										serotype == "19A" ~ "PCV-13",
+										serotype == "2"  ~ "PPV-23",
+										serotype == "8" ~ "PPV-23",
+										serotype == "9N" ~ "PPV-23",
+										serotype == "10A" ~ "PPV-23",
+										serotype == "11A" ~ "PPV-23",
+										serotype == "12F" ~ "PPV-23",
+										serotype == "15B"  ~ "PPV-23",
+										serotype == "17F" ~ "PPV-23",
+										serotype == "20" ~ "PPV-23",
+										serotype == "22F" ~ "PPV-23",
+										serotype == "OTHER" ~ "Other") %>%
 										as_factor() %>%
 										fct_explicit_na(na_level = "Not serotyped"), 
 										
 					## Specimen type				   
-					Specimen = recode(Specimen, "JOINT"  = "OTHER",    # Group samples from joint, peritoneal and pleural fluid
+					specimen = recode(Specimen, "JOINT"  = "OTHER",    # Group samples from joint, peritoneal and pleural fluid
                                      "PERIT" = "OTHER",
 									 "PLEURAL" = "OTHER",
 									 "O"  = "OTHER",
                                      "NULL" = "UNK"),
 					## Dates
-					Date = as.Date(DateUsedForStatisticsISO, "%Y-%m-%d"),  # Convert to date format
-					Date = case_when(nchar(DateUsedForStatisticsISO)==7 ~ paste(DateUsedForStatisticsISO,"-01",sep=""),    # Where no day specified, set to 1st.
+					date = as.Date(DateUsedForStatisticsISO, "%Y-%m-%d"),  # Convert to date format
+					date = case_when(nchar(DateUsedForStatisticsISO)==7 ~ paste(DateUsedForStatisticsISO,"-01",sep=""),    # Where no day specified, set to 1st.
 									 nchar(DateUsedForStatisticsISO)==4 ~ paste(DateUsedForStatisticsISO,"-01-01",sep=""), # Where no day or month specified, set to 1st of the 1st.
 									 TRUE ~ as.character(Date)),
-				    Date = ymd(Date),
+				    date = ymd(Date),
 				    
-					Year = substr(Date,1,4) %>% as.integer()) %>%    # Define year for matching 
+					year = substr(Date,1,4) %>% as.integer()) %>%    # Define year for matching 
 				   
 			select(-DateUsedForStatisticsISO)   # Remove original date variable
 			
-firstYear <- IPDData %>% select(Year) %>% min()
+firstYear <- IPDData %>% select(year) %>% min()
 
 #####################
 ## Population data ##
 #####################
 
 tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy population data
-		    filter(ReportingCountry %in% EEA & ReportYear >= firstYear) %>%
-			mutate(AgeGroup = case_when(AgeGroupId == 1   | AgeGroupId == 2  ~ 1,      # 0-4
+		    filter(country %in% EEA & ReportYear >= firstYear) %>%
+			mutate(ageGroup = case_when(AgeGroupId == 1   | AgeGroupId == 2  ~ 1,      # 0-4
 										AgeGroupId >= 3   & AgeGroupId <= 5  ~ 2,      # 5-14
 										AgeGroupId >= 6   & AgeGroupId <= 12 ~ 3,      # 15-49
 										AgeGroupId >= 13  & AgeGroupId <= 15 ~ 4,      # 50-64
@@ -110,12 +110,12 @@ tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy
 										AgeGroupId >= 18  & AgeGroupId <= 19 ~ 6,      # 75-84
 										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7) %>% # 85+
 										factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+"))) %>%
-			filter(!is.na(AgeGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
-			rename(Year = ReportYear) %>% # Rename to match with IPDData
-			group_by(Year, ReportingCountry, AgeGroup) %>% # Group population by age groups
-			summarise(Population = sum(Population))
+			filter(!is.na(ageGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
+			rename(year = reportyear) %>% # Rename to match with IPDData
+			group_by(year, country, ageGroup) %>% # Group population by age groups
+			summarise(population = sum(population))
 	
-# tessyPop %>% group_by(AgeGroupId, AgeGroup) %>% summarise() %>% print(n=63) #Table of TESSy age categories
+# tessyPop %>% group_by(AgeGroupId, ageGroup) %>% summarise() %>% print(n=63) #Table of TESSy age categories
 
 eurostatPop <- read_csv("EUROSTATpop.csv", col_names=TRUE)   # Read in EUROSTAT population data
 scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrscotland.gov.uk/statistics-and-data/statistics/statistics-by-theme/population/population-estimates/mid-year-population-estimates
@@ -126,24 +126,24 @@ scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrsco
 
 IPDData <- IPDData %>% filter(Classification == "CONF") %>% # Include only confirmed cases
 						left_join(tessyPop) %>%
-						mutate(ReportingCountry = as_factor(ReportingCountry)) %>%
-						arrange(ReportingCountry, Year, AgeGroup) %>%
+						mutate(country = as_factor(country)) %>%
+						arrange(country, year, ageGroup) %>%
 						filter(SubsetEpi == 1) # Select subset for epi. to avoid double-counting lab.results
 
 		
-incData <- IPDData %>% 	filter(Age >= 50)  %>%
-						group_by(ReportingCountry, Year, AgeGroup, GroupType, Population) %>%
-						#group_by(Year, AgeGroup, GroupType, Population) %>%
-						summarise(Total = n()) %>% # Number of cases per year by age group, type and country
-						mutate(Incidence = (Total/Population)*100000) # Incidence per 100,000	
-
+incData <- IPDData %>% 	filter(age >= 50)  %>%
+						group_by(country, year, ageGroup, groupType, population) %>%
+						#group_by(year, ageGroup, groupType, Population) %>%
+						summarise(total = n()) %>% # Number of cases per year by age group, type and country
+						mutate(incidence = (total/population)*100000) %>% # Incidence per 100,000	
+						
 countryNo <- 9
 
 ## Incidence by country
-  ggplot(data = incData, aes(Year, Incidence)) +
+  ggplot(data = incData, aes(year, Incidence)) +
   geom_line(lwd = 0.7) +
   labs(x = "Year", y = "Incidence per 100,000") +
-  facet_grid(GroupType ~ AgeGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE) ,  scales = "free_y") + 
+  facet_grid(groupType ~ ageGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE) ,  scales = "free_y") + 
   scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
   theme(panel.grid.major = element_blank(), 
 					  panel.grid.minor = element_blank(), 
@@ -165,19 +165,19 @@ countryNo <- 9
 ############################
 
 # Proportion of outcome by serotype
-propTypes <- incData %>% filter(GroupType != "Not serotyped") %>% # 
-			   group_by(ReportingCountry, Year, AgeGroup, GroupType) %>%
+propTypes <- incData %>% filter(groupType != "Not serotyped") %>% # 
+			   group_by(country, year, ageGroup, groupType) %>%
                dplyr::summarise(n = sum(Total)) %>%
 			   mutate(freq = n / sum(n))
 			   
 
-propTypes1 <- propTypes %>% filter(ReportingCountry == countries$code[countryNo])
+propTypes1 <- propTypes %>% filter(country == countries$code[countryNo])
 
 ## Trends in proportion of types, by country
-ggplot(data = propTypes1, aes(Year, freq)) +
+ggplot(data = propTypes1, aes(year, freq)) +
   geom_line(lwd = 0.7) +
   labs(x = "Year", y = "Proportion of typed samples") +
-  facet_grid(GroupType ~ AgeGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  facet_grid(groupType ~ ageGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   scale_x_continuous(breaks = seq(2007, 2017, by = 2)) +
   theme(panel.grid.major = element_blank(), 
 					  panel.grid.minor = element_blank(), 
@@ -212,8 +212,9 @@ prop65plus <- gather(prop65plus, countries$name, key="country", value="prop65plu
 				 
 prop80plus <- gather(prop80plus, countries$name, key="country", value="prop80plus") %>%
 				 select(country, year, prop80plus)
-				 
-popProportions <- left_join(prop0to14, prop65plus) %>%
+
+# Historical population proportions by age group				 
+histPopProportions <- left_join(prop0to14, prop65plus) %>%
 					left_join(prop80plus)
 				 
 # Population projections
@@ -238,7 +239,7 @@ popProjections <- popProjections %>% mutate(year = length(years)) %>%
 										 prop80plus_U95_int = spline(x=year, y=prop80plus_U95, xout=year)$y) %>%
 								  ungroup()
 								  
-popProportions <- bind_rows(popProportions, popProjections) %>% 
+popProportions <- bind_rows(histPopProportions, popProjections) %>% 
 					arrange(country,year) 
 					
 popProportions <- popProportions %>%
@@ -303,7 +304,17 @@ ggplot(data = popProportions, aes(x=year)) +
 childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
 					gather(countries$name, key="country", value="childcare0to2") %>%
 					select(country, year, childcare0to2) %>%
-					mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
+					filter(country != "Liechtenstein")
+					#mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
+
+# Forecast childcare
+childcareTS <- as_tsibble(childcare0to2, index=year, key=country) %>%# define tsibble with country as key and year as index
+			   rename(proportion = childcare0to2)
+			   
+fitChildcare <- childcareTS %>% model(ets = ETS(proportion))
+
+forecastChildcare <- fitChildcare %>% forecast(h = "80 years")
+
 
 ggplot(data = childcare0to2, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
@@ -324,27 +335,27 @@ ggplot(data = childcare0to2, aes(x=year)) +
 PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 coverage data
 				melt() %>%
 				as_tibble() %>%
-				rename(year = variable, coverage = value) %>%
+				rename(year = variable, PCV7cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 
 PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 coverage data
 				melt() %>%
 				as_tibble() %>%
-				rename(year = variable, coverage = value) %>%
+				rename(year = variable, PCV10cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 		
 
 PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 coverage data
 				melt() %>%
 				as_tibble() %>%
-				rename(year = variable, coverage = value) %>%
+				rename(year = variable, PCV13cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 				
 ggplot(data = PCV7Data, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	geom_line(aes(y=PCV7cov), col=ECDCcol[1]) +
 	#ylim(0,50)+
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
@@ -359,7 +370,7 @@ ggplot(data = PCV7Data, aes(x=year)) +
 
 ggplot(data = PCV10Data, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	geom_line(aes(y=PCV10cov), col=ECDCcol[1]) +
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
 	theme(panel.grid.major = element_blank(), 
@@ -373,7 +384,7 @@ ggplot(data = PCV10Data, aes(x=year)) +
 					
 ggplot(data = PCV13Data, aes(x=year)) +
 	facet_wrap(~country) +
-	geom_line(aes(y=coverage), col=ECDCcol[1]) +
+	geom_line(aes(y=PCV13cov), col=ECDCcol[1]) +
 	scale_color_manual(values = colours1, guide = FALSE) +
 	scale_fill_manual(values = colours1, guide = FALSE) +
 	theme(panel.grid.major = element_blank(), 
@@ -501,17 +512,53 @@ ggplot(data = fluCoverage, aes(x=year)) +
 		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
 		guides(fill=guide_legend(title=""))+
 	labs(title = "Seasonal influenza vaccination coverage in the over 65s", y = "")
-		
+
+# Summarise coverage of seasonal influenza vaccination by age group
+summFluCov <- fluCoverage %>% select(country, year, fluCov55A, sumCov59, sumCov60, sumCov65) %>%
+								rename(fluCov55to58 = fluCov55A,
+										fluCov59 = sumCov59,
+										fluCov60to64 = sumCov60,
+										fluCov65plus = sumCov65)
+
+# Combine vaccination coverage data
+vaccCoverage <- full_join(PCV7Data, PCV10Data, by=c("country", "year")) %>%
+				full_join(PCV13Data) %>%
+				full_join(summFluCov)
+
+# Combine demographic and vaccination predictors
+predictors <- full_join(popProportions, childcare0to2) %>%
+				full_join(vaccCoverage) 
+predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))  
+ 
+predictors <- as_tibble(predictors) %>%
+				arrange(country, date) %>%
+				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare0to2, PCV7cov, PCV10cov, PCV13cov, fluCov55to58, fluCov59, fluCov60to64, fluCov65plus)
+	
+################# 
+## Projections ##
+#################
+
+firstDate <- as.Date("1998-12-31")
+lastDate <- as.Date("2017-12-31")
+
+## Dynamic regression model
+# IPD incidence time series (currently one age group, 
+incData$date <- as.Date(ISOdate(incData$year, 12, 31))   
+incData <- as_tibble(incData)
+
+inc_ts <- incData %>% complete(date = seq(from = firstDate, to = lastDate, by = "1 year"), fill = list(value = NA)) %>%
+                      as_tsibble(index = date, key = c(country, ageGroup, groupType))
+
 
 #########################
 ## Plot incidence data ##
 #########################
 
  ## Incidence by country
-  ggplot(data = incData, aes(Year, Incidence)) +
-  geom_bar(stat="identity", aes(fill = GroupType)) +
+  ggplot(data = incData, aes(year, Incidence)) +
+  geom_bar(stat="identity", aes(fill = groupType)) +
   labs(	x = "Year", y = "Incidence per 100,000") +
-  facet_wrap(~ ReportingCountry) + #,  scales = "free_y") +
+  facet_wrap(~ country) + #,  scales = "free_y") +
   theme(panel.grid.major = element_blank(), 
 					  panel.grid.minor = element_blank(), 
 					  panel.background = element_blank(),
@@ -522,4 +569,6 @@ ggplot(data = fluCoverage, aes(x=year)) +
 					  guides(fill=guide_legend(title="Vaccine type")) +
   ggtitle(paste("Incidence of IPD in 50+ year olds")) +
   theme(plot.title = element_text(hjust = 0.5))
+  
+  
   
