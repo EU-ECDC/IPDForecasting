@@ -315,7 +315,7 @@ childcare_ts <- as_tsibble(childcare0to2, index=year, key=country) %>%# define t
 			   
 childcare_ts_short <- childcare_ts #%>% filter(year < 2016) # Remove later data points for out-of-sample validation. Forecast for the number of years that have bene excluded and then use accuracy() to assess.
 			   
-childcare_fit <- childcare_ts_short %>% model(ets = ETS(box_cox(proportion, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with multiplicative error term
+childcare_fit <- childcare_ts_short %>% model(ets = ETS(box_cox(proportion, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 childcare_fitted <- childcare_fit %>%
 						fitted() %>%
@@ -330,13 +330,14 @@ childcare_extend <- as_tibble(childcare_fcst) %>%
 					select(country, year, proportion, interval) %>%
 					unnest(interval) %>%
 					select(- .level) %>%
-					rename(childcare_fit = proportion, childcare_L95 = .lower, childcare_U95 = .upper)
+					mutate(childcare_L95 = pmax(0, .lower), childcare_U95 = pmin(100, .upper)) %>%
+					rename(childcare_fit = proportion)
 					 
 childcare_fitted <- bind_rows(childcare_fitted, childcare_extend) %>% # All model values (fit and forecast)
 						arrange(country, year)
 						
 childcare0to2 <- right_join(childcare0to2, childcare_fitted) 
-		
+
 # Diagnostics
 childcare_fcst %>% accuracy(childcare_ts) %>% 
 					print(n=30)
@@ -346,26 +347,26 @@ childcare_fcst %>% filter(country == "Sweden") %>%
 
 childcare_fit %>% filter(country == "Sweden") %>% 
 					report()
-				
-
-				
+							
 ggplot(data = childcare0to2, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_point(aes(y=childcare0to2), col=ECDCcol[1]) +
-  geom_line(aes(y=childcare_fitted), col=ECDCcol[1]) +
-  ylim(0,100)+
+  geom_line(aes(y=childcare_fit), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=childcare_L95, ymax=childcare_U95), fill=ECDCcol[1], alpha=.5) +
+  geom_line(aes(y=childcare_fit), col="black") +
+    ylim(0,100)+
    theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2005, 2040, by = 5)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
   		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
 
 					
-# PCV coverage 
+# PCV-7 coverage 
 PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 coverage data
 				melt() %>%
 				as_tibble() %>%
@@ -373,12 +374,48 @@ PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 cove
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 
+# PCV-10 coverage data
 PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 coverage data
 				melt() %>%
 				as_tibble() %>%
 				rename(year = variable, PCV10cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
-				arrange(country) 		
+				arrange(country) %>%
+				filter(PCV10cov != "NA")
+
+
+# Forecast PCV-10 coverage
+PCV10_extend <- gen(year = length(years)) %>%
+					as_tibble() %>% 
+					select(country, year, PCV10cov, interval) %>%
+					unnest(interval) %>%
+					select(- .level) %>%
+					mutate(PCV10_L95 = pmax(0, .lower), PCV10_U95 = pmin(100, .upper), PCV10_fit = pmax(0, PCV10cov), PCV10_fit = pmin(100, PCV10cov)) %>%
+					select(country, year, PCV10_fit, PCV10_L95, PCV10_U95)
+					 
+PCV10_fitted <- bind_rows(PCV10_fitted, PCV10_extend) %>% # All model values (fit and forecast)
+						arrange(country, year)
+						
+PCV10coverage <- right_join(PCV10Data, PCV10_fitted) 
+					
+ggplot(data = PCV10coverage, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_point(aes(y=PCV10cov), col=ECDCcol[1]) +
+  geom_line(aes(y=PCV10_fit), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=PCV10_L95, ymax=PCV10_U95), fill=ECDCcol[1], alpha=.5) +
+  geom_line(aes(y=PCV10_fit), col="black") +
+    ylim(0,100)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
+  		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
+
+
 
 PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 coverage data
 				melt() %>%
@@ -386,7 +423,56 @@ PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 c
 				rename(year = variable, PCV13cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
-				
+
+# Forecast PCV-13 coverage
+PCV13_ts <- as_tsibble(PCV13Data, index=year, key=country) # define tsibble with country as key and year as index
+		 
+			   
+PCV13_fit <- PCV13_ts %>%
+				 model(ets = ETS(box_cox(PCV13cov, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+				fitted()
+
+PCV13_fitted <- PCV13_fit %>%
+					fitted() %>%
+					as_tibble() %>%
+					mutate(PCV13_fit = pmax(0, .fitted), PCV13_fit = pmin(100, PCV13_fit)) %>%
+					select(country, year, PCV13_fit)				
+
+PCV13_fcst <- PCV13_fit %>%	forecast(h = "23 years") %>%
+					mutate(interval = hilo(.distribution, 95))
+
+PCV13_extend <- as_tibble(PCV13_fcst) %>% 
+					select(country, year, PCV13cov, interval) %>%
+					unnest(interval) %>%
+					select(- .level) %>%
+					mutate(PCV13_L95 = pmax(0, .lower), PCV13_U95 = pmin(100, .upper), PCV13_fit = pmax(0, PCV13cov), PCV13_fit = pmin(100, PCV13cov)) %>%
+					select(country, year, PCV13_fit, PCV13_L95, PCV13_U95)
+					 
+PCV13_fitted <- bind_rows(PCV13_fitted, PCV13_extend) %>% # All model values (fit and forecast)
+						arrange(country, year)
+						
+PCV13coverage <- right_join(PCV13Data, PCV13_fitted) 
+					
+ggplot(data = PCV13coverage, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_point(aes(y=PCV13cov), col=ECDCcol[1]) +
+  geom_line(aes(y=PCV13_fit), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=PCV13_L95, ymax=PCV13_U95), fill=ECDCcol[1], alpha=.5) +
+  geom_line(aes(y=PCV13_fit), col="black") +
+    ylim(0,100)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
+  		guides(fill=guide_legend(title="")) +
+	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
+
+
+
+			
 ggplot(data = PCV7Data, aes(x=year)) +
 	facet_wrap(~country) +
 	geom_line(aes(y=PCV7cov), col=ECDCcol[1]) +
