@@ -8,6 +8,7 @@ library(reshape2)
 library(tsibble)
 library(fable)
 library(feasts)
+library(fabletools)
 
 myColours <- c("26 107 133", "241 214 118", "168 45 23")
 ECDCcol <- sapply(strsplit(myColours, " "), function(x)
@@ -308,17 +309,50 @@ childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUR
 					#mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
 
 # Forecast childcare
-childcareTS <- as_tsibble(childcare0to2, index=year, key=country) %>%# define tsibble with country as key and year as index
-			   rename(proportion = childcare0to2)
+childcare_ts <- as_tsibble(childcare0to2, index=year, key=country) %>%# define tsibble with country as key and year as index
+			   rename(proportion = childcare0to2) %>%
+			   filter(proportion != "NA") 
 			   
-fitChildcare <- childcareTS %>% model(ets = ETS(proportion))
+childcare_ts_short <- childcare_ts #%>% filter(year < 2016) # Remove later data points for out-of-sample validation. Forecast for the number of years that have bene excluded and then use accuracy() to assess.
+			   
+childcare_fit <- childcare_ts_short %>% model(ets = ETS(box_cox(proportion, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with multiplicative error term
 
-forecastChildcare <- fitChildcare %>% forecast(h = "80 years")
+childcare_fitted <- childcare_fit %>%
+						fitted() %>%
+						as_tibble() %>%
+						rename(childcare_fit = .fitted) %>%
+						select(country, year, childcare_fit)				
 
+childcare_fcst <- childcare_fit %>%	forecast(h = "23 years") %>%
+					mutate(interval = hilo(.distribution, 95))
 
+childcare_extend <- as_tibble(childcare_fcst) %>% 
+					select(country, year, proportion, interval) %>%
+					unnest(interval) %>%
+					select(- .level) %>%
+					rename(childcare_fit = proportion, childcare_L95 = .lower, childcare_U95 = .upper)
+					 
+childcare_fitted <- bind_rows(childcare_fitted, childcare_extend) %>% # All model values (fit and forecast)
+						arrange(country, year)
+						
+childcare0to2 <- right_join(childcare0to2, childcare_fitted) 
+		
+# Diagnostics
+childcare_fcst %>% accuracy(childcare_ts) %>% 
+					print(n=30)
+
+childcare_fcst %>% filter(country == "Sweden") %>% 
+					autoplot(childcare_ts)
+
+childcare_fit %>% filter(country == "Sweden") %>% 
+					report()
+				
+
+				
 ggplot(data = childcare0to2, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
-  geom_line(aes(y=childcare0to2), col=ECDCcol[1]) +
+  geom_point(aes(y=childcare0to2), col=ECDCcol[1]) +
+  geom_line(aes(y=childcare_fitted), col=ECDCcol[1]) +
   ylim(0,100)+
    theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
@@ -326,7 +360,7 @@ ggplot(data = childcare0to2, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2006, 2018, by = 2)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 5)) +
   		guides(fill=guide_legend(title="")) +
 	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
 
