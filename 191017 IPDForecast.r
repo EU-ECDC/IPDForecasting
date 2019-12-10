@@ -222,7 +222,7 @@ histPopProportions <- left_join(prop0to14, prop65plus) %>%
 # First interpolate for single year predictions
 # Timeframe for projections
 popProjections <- read_csv("popProjections.csv", col_names=TRUE) # Source: UN DESA World Population Prospects 2019 https://population.un.org/wpp/Download/Probabilistic/Population/
-years <- seq(2019, max(popProjections$year)) # Extrapolate to 2019 (current year)
+years <- seq(2019, max(popProjections$year)) # Extrapolate from 2019 (current year)
 
 # Interpolate missing years in projections with splines
 popProjections <- popProjections %>% mutate(year = length(years)) %>% 
@@ -366,16 +366,16 @@ ggplot(data = childcare0to2, aes(x=year)) +
 	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
 
 					
-# PCV-7 coverage 
-PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 coverage data
+# PCV-7 uptake 
+PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 uptake data
 				melt() %>%
 				as_tibble() %>%
 				rename(year = variable, PCV7cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 
-# PCV-10 coverage data
-PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 coverage data
+# PCV-10 uptake data
+PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 uptake data
 				melt() %>%
 				as_tibble() %>%
 				rename(year = variable, PCV10cov = value) %>%
@@ -384,21 +384,29 @@ PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 c
 				filter(PCV10cov != "NA")
 
 
-# Forecast PCV-10 coverage
-PCV10_extend <- gen(year = length(years)) %>%
-					as_tibble() %>% 
-					select(country, year, PCV10cov, interval) %>%
-					unnest(interval) %>%
-					select(- .level) %>%
-					mutate(PCV10_L95 = pmax(0, .lower), PCV10_U95 = pmin(100, .upper), PCV10_fit = pmax(0, PCV10cov), PCV10_fit = pmin(100, PCV10cov)) %>%
-					select(country, year, PCV10_fit, PCV10_L95, PCV10_U95)
-					 
-PCV10_fitted <- bind_rows(PCV10_fitted, PCV10_extend) %>% # All model values (fit and forecast)
-						arrange(country, year)
-						
-PCV10coverage <- right_join(PCV10Data, PCV10_fitted) 
-					
-ggplot(data = PCV10coverage, aes(x=year)) +
+# Forecast PCV-10 uptake
+extend <- seq(min(PCV10Data$year), 2040)
+
+PCV10uptake <- PCV10Data %>%
+					mutate(year = length(extend)) %>% 
+					group_by(country) %>% 
+					expand(year = extend) %>%
+					left_join(PCV10Data) %>% 
+					mutate(PCV10_fit = rollmean(PCV10cov, 2, align = "right", fill = NA) %>%  # Average or previous 2 years' uptake
+									  lag(1)) %>%
+					fill(PCV10_fit, .direction = "down") %>%
+					mutate(PCV10_fit = case_when(year < 2017 ~ NA_real_, TRUE ~ PCV10_fit),
+						   PCV10_L95 = PCV10_fit - 5, # Define 95% CI as +/- 5% points
+						   PCV10_U95 = pmin(PCV10_fit + 5, 100)) 
+
+# N.B. Need manual intervention for countries with less than two years equilibrium uptake data: Poland
+PCV10uptake <- PCV10uptake %>% 
+				mutate(PCV10_fit  = case_when(country == "Poland" & year >= 2018 ~ 94, TRUE ~ PCV10_fit),
+						PCV10_L95 = case_when(country == "Poland" & year >= 2018 ~ 94 - 5, TRUE ~ PCV10_L95), # Define 95% CI as +/- 5% points
+						PCV10_U95 = case_when(country == "Poland" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV10_U95)) 
+
+									
+ggplot(data = PCV10uptake, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_point(aes(y=PCV10cov), col=ECDCcol[1]) +
   geom_line(aes(y=PCV10_fit), col=ECDCcol[1]) +
@@ -413,47 +421,38 @@ ggplot(data = PCV10coverage, aes(x=year)) +
 		axis.text.x.top = element_text(vjust = -0.5)) +
 		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
   		guides(fill=guide_legend(title="")) +
-	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
+	labs(title = "Uptake of PCV-10 vaccination in children", y = "")
 
 
-
-PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 coverage data
+# PCV-13 uptake data
+PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 uptake data
 				melt() %>%
 				as_tibble() %>%
 				rename(year = variable, PCV13cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 
-# Forecast PCV-13 coverage
-PCV13_ts <- as_tsibble(PCV13Data, index=year, key=country) # define tsibble with country as key and year as index
-		 
-			   
-PCV13_fit <- PCV13_ts %>%
-				 model(ets = ETS(box_cox(PCV13cov, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
-				fitted()
+# Forecast PCV-13 uptake
+PCV13uptake <- PCV13Data %>%
+					mutate(year = length(extend)) %>% 
+					group_by(country) %>% 
+					expand(year = extend) %>%
+					left_join(PCV13Data) %>% 
+					mutate(PCV13_fit = rollmean(PCV13cov, 2, align = "right", fill = NA) %>%  # Average or previous 3 years uptake
+									  lag(1)) %>%
+					fill(PCV13_fit, .direction = "down") %>%
+					mutate(PCV13_fit = case_when(year < 2018 ~ NA_real_, TRUE ~ PCV13_fit),
+						   PCV13_L95 = PCV13_fit - 5, # Define 95% CI as +/- 5% points
+						   PCV13_U95 = pmin(PCV13_fit + 5, 100)) 
 
-PCV13_fitted <- PCV13_fit %>%
-					fitted() %>%
-					as_tibble() %>%
-					mutate(PCV13_fit = pmax(0, .fitted), PCV13_fit = pmin(100, PCV13_fit)) %>%
-					select(country, year, PCV13_fit)				
+# N.B. Need manual intervention for countries with less than two years equilibrium uptake data: Romania
+PCV13uptake <- PCV13uptake %>% 
+				mutate(PCV13_fit  = case_when(country == "Romania" & year >= 2018 ~ 94, TRUE ~ PCV13_fit),
+						PCV13_L95 = case_when(country == "Romania" & year >= 2018 ~ 94 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+						PCV13_U95 = case_when(country == "Romania" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV13_U95)) 
 
-PCV13_fcst <- PCV13_fit %>%	forecast(h = "23 years") %>%
-					mutate(interval = hilo(.distribution, 95))
-
-PCV13_extend <- as_tibble(PCV13_fcst) %>% 
-					select(country, year, PCV13cov, interval) %>%
-					unnest(interval) %>%
-					select(- .level) %>%
-					mutate(PCV13_L95 = pmax(0, .lower), PCV13_U95 = pmin(100, .upper), PCV13_fit = pmax(0, PCV13cov), PCV13_fit = pmin(100, PCV13cov)) %>%
-					select(country, year, PCV13_fit, PCV13_L95, PCV13_U95)
-					 
-PCV13_fitted <- bind_rows(PCV13_fitted, PCV13_extend) %>% # All model values (fit and forecast)
-						arrange(country, year)
-						
-PCV13coverage <- right_join(PCV13Data, PCV13_fitted) 
-					
-ggplot(data = PCV13coverage, aes(x=year)) +
+												
+ggplot(data = PCV13uptake, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_point(aes(y=PCV13cov), col=ECDCcol[1]) +
   geom_line(aes(y=PCV13_fit), col=ECDCcol[1]) +
@@ -468,7 +467,7 @@ ggplot(data = PCV13coverage, aes(x=year)) +
 		axis.text.x.top = element_text(vjust = -0.5)) +
 		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
   		guides(fill=guide_legend(title="")) +
-	labs(title = "Proportion of children under three not enrolled in formal childcare", y = "")
+	labs(title = "Uptake of PCV-13 vaccination in children", y = "")
 
 
 
