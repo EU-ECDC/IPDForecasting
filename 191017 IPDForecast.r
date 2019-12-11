@@ -253,7 +253,7 @@ popProportions <- popProportions %>%
 					filter(country != "Liechtenstein")
 
 # Plot proportion aged 0-14
-ggplot(data = popProportions, aes(x=year)) +
+ggplot(data = popProportions %>% filter(year <= 2040), aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_line(aes(y=prop0to14_int), col=ECDCcol[1]) +
   geom_ribbon(aes(x=year,ymin=prop0to14_L95_int, ymax=prop0to14_U95_int), fill=ECDCcol[1], alpha=.5) +
@@ -264,42 +264,42 @@ ggplot(data = popProportions, aes(x=year)) +
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 5)) +
 		guides(fill=guide_legend(title="")) +
-	labs(title = "Proportion of population aged 0 to 14", y = "")
+	labs(title = "Proportion of population aged 0 to 14", y = "", x = "")
 
 # Plot proportion aged 65 plus
-ggplot(data = popProportions, aes(x=year)) +
+ggplot(data = popProportions %>% filter(year <= 2040), aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_line(aes(y=prop65plus_int), col=ECDCcol[1]) +
   geom_ribbon(aes(x=year,ymin=prop65plus_L95_int, ymax=prop65plus_U95_int), fill=ECDCcol[1], alpha=.5) +
-   ylim(0,60)+
+   ylim(0,40)+
    theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 5)) +
 		guides(fill=guide_legend(title="")) +
-	labs(title = "Proportion of population aged over 65", y = "")
+	labs(title = "Proportion of population aged over 65", y = "", x = "")
 
 
 # Plot proportion aged 80 plus
-ggplot(data = popProportions, aes(x=year)) +
+ggplot(data = popProportions %>% filter(year <= 2040), aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_line(aes(y=prop80plus_int), col=ECDCcol[1]) +
   geom_ribbon(aes(x=year,ymin=prop80plus_L95_int, ymax=prop80plus_U95_int), fill=ECDCcol[1], alpha=.5) +
-   ylim(0,30)+
+   ylim(0,15)+
    theme(panel.grid.major = element_blank(), 
 		panel.grid.minor = element_blank(), 
 		panel.background = element_blank(),
 		axis.line = element_line(colour = "black"),
 		text = element_text(size=14),
 		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2005, 2105, by = 20)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 5)) +
 		guides(fill=guide_legend(title="")) +
-	labs(title = "Proportion of population aged over 80", y = "")
+	labs(title = "Proportion of population aged over 80", y = "", x = "")
 
 # Proportion of children under three not in formal childcare
 childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
@@ -469,9 +469,7 @@ ggplot(data = PCV13uptake, aes(x=year)) +
   		guides(fill=guide_legend(title="")) +
 	labs(title = "Uptake of PCV-13 vaccination in children", y = "")
 
-
-
-			
+		
 ggplot(data = PCV7Data, aes(x=year)) +
 	facet_wrap(~country) +
 	geom_line(aes(y=PCV7cov), col=ECDCcol[1]) +
@@ -560,12 +558,10 @@ fluCoverage <- left_join(fluCov55A, fluCov59A, by = c("country", "year")) %>%
 			   left_join(fluCov65S, by = c("country", "year")) %>%
 			   filter(country != "Liechtenstein") %>%
 			   rowwise() %>% 
-			   mutate(sumCov59 = sum(fluCov55A,fluCov59A, na.rm=TRUE)) %>%
-			   mutate(sumCov60 = sum(fluCov55A,fluCov59A,fluCov60A, na.rm=TRUE)) %>%
-     		   mutate(sumCov65 = sum(fluCov55A,fluCov59A,fluCov60A,fluCov65A, na.rm=TRUE)) 
+			   mutate(sumCov59 = case_when(is.na(fluCov55A) & is.na(fluCov59A) ~ NA_real_, TRUE ~ sum(fluCov55A,fluCov59A, na.rm=TRUE))) %>%
+			   mutate(sumCov60 = case_when(is.na(fluCov55A) & is.na(fluCov59A) & is.na(fluCov59A) ~ NA_real_, TRUE ~ sum(fluCov55A,fluCov59A,fluCov60A, na.rm=TRUE))) %>%
+     		   mutate(sumCov65 = case_when(is.na(fluCov55A) & is.na(fluCov59A) & is.na(fluCov60A) & is.na(fluCov65A) ~ NA_real_, TRUE ~ sum(fluCov55A,fluCov59A,fluCov60A,fluCov65A, na.rm=TRUE))) 
 			   
-fluCoverage[fluCoverage == 0] <- NA
-			
 			
 # Plot influenza vaccination coverage data	
 ggplot(data = fluCoverage, aes(x=year)) +
@@ -635,9 +631,46 @@ ggplot(data = fluCoverage, aes(x=year)) +
 # Summarise coverage of seasonal influenza vaccination by age group
 summFluCov <- fluCoverage %>% select(country, year, fluCov55A, sumCov59, sumCov60, sumCov65) %>%
 								rename(fluCov55to58 = fluCov55A,
-										fluCov59 = sumCov59,
-										fluCov60to64 = sumCov60,
-										fluCov65plus = sumCov65)
+									   fluCov59 = sumCov59,
+									   fluCov60to64 = sumCov60,
+									   fluCov65plus = sumCov65)
+									   
+# Forecast influenza vaccination coverage data
+fluCoverage_ts <- as_tsibble(summFluCov, index=year, key=country) %>%# define tsibble with country as key and year as index
+					
+fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+
+fluCoverage_fitted <- fluCoverage_fit %>%
+						fitted() %>%
+						as_tibble() %>%
+						rename(childcare_fit = .fitted) %>%
+						select(country, year, childcare_fit)				
+
+childcare_fcst <- childcare_fit %>%	forecast(h = "23 years") %>%
+					mutate(interval = hilo(.distribution, 95))
+
+childcare_extend <- as_tibble(childcare_fcst) %>% 
+					select(country, year, proportion, interval) %>%
+					unnest(interval) %>%
+					select(- .level) %>%
+					mutate(childcare_L95 = pmax(0, .lower), childcare_U95 = pmin(100, .upper)) %>%
+					rename(childcare_fit = proportion)
+					 
+childcare_fitted <- bind_rows(childcare_fitted, childcare_extend) %>% # All model values (fit and forecast)
+						arrange(country, year)
+						
+childcare0to2 <- right_join(childcare0to2, childcare_fitted) 
+
+# Diagnostics
+childcare_fcst %>% accuracy(childcare_ts) %>% 
+					print(n=30)
+
+childcare_fcst %>% filter(country == "Sweden") %>% 
+					autoplot(childcare_ts)
+
+childcare_fit %>% filter(country == "Sweden") %>% 
+					report()
+
 
 # Combine vaccination coverage data
 vaccCoverage <- full_join(PCV7Data, PCV10Data, by=c("country", "year")) %>%
