@@ -633,43 +633,52 @@ summFluCov <- fluCoverage %>% select(country, year, fluCov55A, sumCov59, sumCov6
 								rename(fluCov55to58 = fluCov55A,
 									   fluCov59 = sumCov59,
 									   fluCov60to64 = sumCov60,
-									   fluCov65plus = sumCov65)
+									   fluCov65plus = sumCov65) %>%
+								filter(fluCov65plus != "NA") 
 									   
 # Forecast influenza vaccination coverage data
-fluCoverage_ts <- as_tsibble(summFluCov, index=year, key=country) %>%# define tsibble with country as key and year as index
+fluCoverage_ts <- as_tsibble(summFluCov, index=year, key=country)  # define tsibble with country as key and year as index
 					
 fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 fluCoverage_fitted <- fluCoverage_fit %>%
 						fitted() %>%
 						as_tibble() %>%
-						rename(childcare_fit = .fitted) %>%
-						select(country, year, childcare_fit)				
+						rename(flu65plus_fit = .fitted) %>%
+						select(country, year, flu65plus_fit)				
 
-childcare_fcst <- childcare_fit %>%	forecast(h = "23 years") %>%
+fluCoverage_fcst <- fluCoverage_fit %>%	forecast(h = "23 years") %>%
 					mutate(interval = hilo(.distribution, 95))
 
-childcare_extend <- as_tibble(childcare_fcst) %>% 
-					select(country, year, proportion, interval) %>%
-					unnest(interval) %>%
-					select(- .level) %>%
-					mutate(childcare_L95 = pmax(0, .lower), childcare_U95 = pmin(100, .upper)) %>%
-					rename(childcare_fit = proportion)
+fluCoverage_extend <- as_tibble(fluCoverage_fcst) %>% 
+						select(country, year, fluCov65plus, interval) %>%
+						unnest(interval) %>%
+						select(- .level) %>%
+						mutate(flu65plus_L95 = pmax(0, .lower), flu65plus_U95 = pmin(100, .upper)) %>%
+						rename(flu65plus_fit = fluCov65plus) %>%
+						select(-.lower, -.upper)
 					 
-childcare_fitted <- bind_rows(childcare_fitted, childcare_extend) %>% # All model values (fit and forecast)
+fluCoverage_fitted <- bind_rows(fluCoverage_fitted, fluCoverage_extend) %>% # All model values (fit and forecast)
 						arrange(country, year)
 						
-childcare0to2 <- right_join(childcare0to2, childcare_fitted) 
-
-# Diagnostics
-childcare_fcst %>% accuracy(childcare_ts) %>% 
-					print(n=30)
-
-childcare_fcst %>% filter(country == "Sweden") %>% 
-					autoplot(childcare_ts)
-
-childcare_fit %>% filter(country == "Sweden") %>% 
-					report()
+summFluCov <- right_join(summFluCov, fluCoverage_fitted) 
+					
+ggplot(data = summFluCov, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  geom_point(aes(y=fluCov65plus), col=ECDCcol[1]) +
+  geom_line(aes(y=flu65plus_fit), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=flu65plus_L95, ymax=flu65plus_U95), fill=ECDCcol[1], alpha=.5) +
+  geom_line(aes(y=flu65plus_fit), col="black") +
+    ylim(0,100)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
+  		guides(fill=guide_legend(title="")) +
+	labs(title = "Uptake of seasonal influenza vaccination in over 65s", y = "")
 
 
 # Combine vaccination coverage data
