@@ -20,8 +20,8 @@ colours1 <- colorRampPalette(ECDCcol)(11)
 ## List countries
 EEA <- c("AT","BE","BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "UK") 
 countryList <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania","Luxembourg", "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "UK" )
-countries <- tibble(code=EEA, name=countryList)
-countriesScot <- add_row(countries, code = "SC", name = "Scotland")
+countries <- tibble(GeoCode = EEA, country = countryList)
+countries <- add_row(countries, GeoCode = "SC", country = "Scotland")
 
 ########################		
 ## IPD incidence data ##
@@ -43,8 +43,7 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 							  factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+")),
 							  
 				  ## Countries
-				  country = case_when(GeoCode == "UKM" ~ "SC",
-											    TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
+				  GeoCode = case_when(GeoCode == "UKM" ~ "SC", TRUE ~ as.character(ReportingCountry)), # Recode region 'UKM' as Scotland 
 				 
 				 ## Serotypes
 				  serotype = recode(Serotype, "NT" = "UNK",           		 
@@ -94,7 +93,9 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 				    
 					year = substr(date,1,4) %>% as.integer()) %>%    # Define year for matching 
 				   
-			select(-DateUsedForStatisticsISO)   # Remove original date variable
+					select(-DateUsedForStatisticsISO) %>%  # Remove original date variable
+
+				    left_join(countries) # country names
 			
 firstYear <- IPDData %>% select(year) %>% min()
 
@@ -138,8 +139,6 @@ incData <- IPDData %>% 	filter(age >= 50)  %>%
 						#group_by(year, ageGroup, groupType, Population) %>%
 						summarise(total = n()) %>% # Number of cases per year by age group, type and country
 						mutate(incidence = (total/population)*100000)  # Incidence per 100,000	
-						
-countryNo <- 9
 
 ## Incidence by country
   ggplot(data = incData, aes(year, Incidence)) +
