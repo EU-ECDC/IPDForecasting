@@ -728,17 +728,25 @@ predictors <- full_join(popProportions, childcare0to2, by=c("country", "year")) 
 			  full_join(summFluCov)
 			  
 predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))  
- 
-predictors <- as_tibble(predictors) %>%
-				arrange(country, date) %>%
-				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit)
-	
+
+# Values of predictor variables up until present time for fitting model
+predictors_past <- as_tibble(predictors) %>%
+					arrange(country, date) %>%
+					select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
+					filter(year <= 2018)
+
+# Values of predictor variables from now until 2040 for making forecasts
+predictors_future <- as_tibble(predictors) %>%
+					 arrange(country, date) %>%
+					 select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
+					 filter(2018 < year &  year <= 2040)
+					
 ################# 
 ## Projections ##
 #################
 
-firstDate <- as.Date("1998-12-31")
-lastDate <- as.Date("2017-12-31")
+firstDate <- min(predictors_past$date)
+lastDate <- max(predictors_past$date)
 
 ## Dynamic regression model
 # IPD incidence time series (currently one age group, 
