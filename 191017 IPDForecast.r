@@ -114,12 +114,13 @@ tessyPop <- read_csv("TESSy population.csv", col_names=TRUE) %>% # Read in TESSy
 										AgeGroupId >= 20  & AgeGroupId <= 23 ~ 7) %>% # 85+
 										factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+"))) %>%
 			filter(!is.na(ageGroup))  %>% # Original population database included other ways of grouping ages. Drop these values	
-			rename(year = ReportYear, country = ReportingCountry) %>% # Rename to match with IPDData
-			group_by(year, country, ageGroup) %>% # Group population by age groups
-			summarise(population = sum(Population))
+			rename(year = ReportYear, GeoCode = ReportingCountry) %>% # Rename to match with IPDData
+			left_join(countries) %>% # Add in country names
+			group_by(year, country, ageGroup) %>% # Group population by age groups 
+			summarise(population = sum(Population)) %>%
+			ungroup() %>%
+			as_tsibble(index = year, key = c(country, ageGroup)) 
 	
-# tessyPop %>% group_by(AgeGroupId, ageGroup) %>% summarise() %>% print(n=63) #Table of TESSy age categories
-
 eurostatPop <- read_csv("EUROSTATpop.csv", col_names=TRUE)   # Read in EUROSTAT population data
 scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrscotland.gov.uk/statistics-and-data/statistics/statistics-by-theme/population/population-estimates/mid-year-population-estimates
 
@@ -127,21 +128,21 @@ scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrsco
 ## Incidence ##
 ###############
 
-IPDData <- IPDData %>% filter(Classification == "CONF") %>% # Include only confirmed cases
+IPDData <- IPDData %>% filter(Classification == "CONF" & SubsetEpi == 1) %>% # Include only confirmed cases and select subset for epi. to avoid double-counting lab.results
 						left_join(tessyPop) %>%
-						mutate(country = as_factor(country)) %>%
-						arrange(country, year, ageGroup) %>%
-						filter(SubsetEpi == 1) # Select subset for epi. to avoid double-counting lab.results
-
+						arrange(country, year, ageGroup) 
 		
 incData <- IPDData %>% 	filter(age >= 50)  %>%
 						group_by(country, year, ageGroup, groupType, population) %>%
-						#group_by(year, ageGroup, groupType, Population) %>%
 						summarise(total = n()) %>% # Number of cases per year by age group, type and country
-						mutate(incidence = (total/population)*100000)  # Incidence per 100,000	
+						mutate(incidence = (total/population)*100000) %>% # Incidence per 100,000	
+						ungroup() %>%
+						as_tsibble(index = year, key = c(country, ageGroup, groupType))
+						
+countryNo <- 9
 
 ## Incidence by country
-  ggplot(data = incData, aes(year, Incidence)) +
+  ggplot(data = incData, aes(year, incidence)) +
   geom_line(lwd = 0.7) +
   labs(x = "Year", y = "Incidence per 100,000") +
   facet_grid(groupType ~ ageGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE) ,  scales = "free_y") + 
@@ -158,7 +159,7 @@ incData <- IPDData %>% 	filter(age >= 50)  %>%
 					  strip.text.y = element_text(size=12, colour="white"),
 					  strip.background = element_rect(fill=ECDCcol[1])) +
 					  guides(fill=guide_legend(title="Vaccine type")) +
-  ggtitle(paste("Rate of IPD incidence in", countries$name[countryNo])) +
+  ggtitle(paste("Rate of IPD incidence in", countries$country[countryNo])) +
   theme(plot.title = element_text(hjust = 0.5))
   
 ############################
