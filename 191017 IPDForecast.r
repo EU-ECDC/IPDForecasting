@@ -127,6 +127,7 @@ scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrsco
 ###############
 ## Incidence ##
 ###############
+years1 <- seq(1998, 2018) 
 
 IPDData <- IPDData %>% filter(Classification == "CONF" & SubsetEpi == 1) %>% # Include only confirmed cases and select subset for epi. to avoid double-counting lab.results
 						left_join(tessyPop) %>%
@@ -136,9 +137,16 @@ incData <- IPDData %>% 	filter(age >= 50)  %>%
 						group_by(country, year, ageGroup, groupType, population) %>%
 						summarise(total = n()) %>% # Number of cases per year by age group, type and country
 						mutate(incidence = (total/population)*100000) %>% # Incidence per 100,000	
-						ungroup() %>%
-						as_tsibble(index = year, key = c(country, ageGroup, groupType))
+						ungroup() 
 						
+incData <- incData %>% 	mutate(year = length(years1)) %>% 
+						group_by(country, ageGroup, groupType) %>% 
+						expand(year = years1) %>%
+						left_join(incData) %>%	
+						ungroup() %>%
+						select(-population, -total) %>%
+						as_tsibble(index = year, key = c(country, ageGroup, groupType))
+					
 countryNo <- 9
 
 ## Incidence by country
@@ -732,7 +740,7 @@ predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))
 # Values of predictor variables up until present time for fitting model
 predictors_past <- as_tibble(predictors) %>%
 					arrange(country, date) %>%
-					select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
+					select(year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
 					filter(year <= 2018)
 
 # Values of predictor variables from now until 2040 for making forecasts
@@ -744,17 +752,7 @@ predictors_future <- as_tibble(predictors) %>%
 ################# 
 ## Projections ##
 #################
-
-firstDate <- min(predictors_past$date)
-lastDate <- max(predictors_past$date)
-
-## Dynamic regression model
-# IPD incidence time series (currently one age group, 
-incData$date <- as.Date(ISOdate(incData$year, 12, 31))   
-incData <- as_tibble(incData)
-
-inc_ts <- incData %>% complete(date = seq(from = firstDate, to = lastDate, by = "1 year"), fill = list(value = NA)) %>%
-                      as_tsibble(index = date, key = c(country, ageGroup, groupType))
+full_join(incData, predictors_past)
 
 
 #########################
