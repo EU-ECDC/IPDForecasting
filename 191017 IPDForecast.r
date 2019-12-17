@@ -7,7 +7,7 @@ library(lubridate)
 library(reshape2)
 library(tsibble)
 library(fable)
-library(feasts)
+#library(feasts)
 library(fabletools)
 
 myColours <- c("26 107 133", "241 214 118", "168 45 23")
@@ -633,13 +633,49 @@ summFluCov <- fluCoverage %>% select(country, year, fluCov55A, sumCov59, sumCov6
 								rename(fluCov55to58 = fluCov55A,
 									   fluCov59 = sumCov59,
 									   fluCov60to64 = sumCov60,
-									   fluCov65plus = sumCov65) %>%
-								filter(fluCov65plus != "NA") 
-									   
+									   fluCov65plus = sumCov65) 
+
+# Interpolate missing values. This is largely manual and very messy!
+library(forecast)									   
+summFluCov$fluCov65plus_int <- summFluCov %>% select(fluCov65plus) %>%
+											  na.interp()
+detach("package:forecast", unload=TRUE)
+
+# Manually curate imputed values
+summFluCov <- summFluCov %>%  mutate(fluCov65plus_int = case_when(country == "Austria" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Belgium" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Bulgaria" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Croatia" & (year <= 2012 | year > 2015) ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Cyprus" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Czechia" & (year <= 2014 | year >= 2016) ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Denmark" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Estonia" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Finland" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "France" & year >= 2016 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Germany" & (year <= 2013 | year >= 2018) ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Greece" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Hungary" & year <= 2008 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Italy" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Latvia" & year <= 2008 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Lithuania" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Luxembourg" & (year <= 2008 | year > 2014) ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Malta" & year >= 2016 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Netherlands" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Norway" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Poland" & year >= 2018 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Portugal" ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Romania" & year >= 2016 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Slovakia" & year >= 2016 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Slovenia" & year >= 2016 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "Sweden" & year <= 2008 ~ NA_real_, TRUE ~ fluCov65plus_int)) %>%
+							  mutate(fluCov65plus_int = case_when(country == "UK" & year <= 2008 ~ NA_real_, TRUE ~ fluCov65plus_int)) 
+							  
 # Forecast influenza vaccination coverage data
-fluCoverage_ts <- as_tsibble(summFluCov, index=year, key=country)  # define tsibble with country as key and year as index
-					
-fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+fluCoverage_ts <- summFluCov %>% filter(!is.na(fluCov65plus_int)) %>%
+								 as_tsibble(index=year, key=country)  # define tsibble with country as key and year as index
+
+# Fit to interpolated data					
+fluCoverage_fit <- fluCoverage_ts %>% filter(country == "Germany") %>% model(ets = ETS(box_cox(fluCov65plus_int, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 fluCoverage_fitted <- fluCoverage_fit %>%
 						fitted() %>%
@@ -651,11 +687,11 @@ fluCoverage_fcst <- fluCoverage_fit %>%	forecast(h = "23 years") %>%
 					mutate(interval = hilo(.distribution, 95))
 
 fluCoverage_extend <- as_tibble(fluCoverage_fcst) %>% 
-						select(country, year, fluCov65plus, interval) %>%
+						select(country, year, fluCov65plus_int, interval) %>%
 						unnest(interval) %>%
 						select(- .level) %>%
 						mutate(flu65plus_L95 = pmax(0, .lower), flu65plus_U95 = pmin(100, .upper)) %>%
-						rename(flu65plus_fit = fluCov65plus) %>%
+						rename(flu65plus_fit = fluCov65plus_int) %>%
 						select(-.lower, -.upper)
 					 
 fluCoverage_fitted <- bind_rows(fluCoverage_fitted, fluCoverage_extend) %>% # All model values (fit and forecast)
@@ -665,7 +701,7 @@ summFluCov <- right_join(summFluCov, fluCoverage_fitted)
 					
 ggplot(data = summFluCov, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
-  geom_point(aes(y=fluCov65plus), col=ECDCcol[1]) +
+  geom_point(aes(y=fluCov65plus_int), col=ECDCcol[1]) +
   geom_line(aes(y=flu65plus_fit), col=ECDCcol[1]) +
   geom_ribbon(aes(x=year,ymin=flu65plus_L95, ymax=flu65plus_U95), fill=ECDCcol[1], alpha=.5) +
   geom_line(aes(y=flu65plus_fit), col="black") +
