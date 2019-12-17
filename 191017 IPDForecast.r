@@ -368,13 +368,25 @@ ggplot(data = childcare0to2, aes(x=year)) +
 
 					
 # PCV-7 uptake 
+extend <- seq(min(PCV7Data$year), 2040)
+
 PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 uptake data
 				melt() %>%
 				as_tibble() %>%
 				rename(year = variable, PCV7cov = value) %>%
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
-
+				
+# Forecast PCV-7 uptake				
+PCV7uptake <- PCV7Data %>%
+					mutate(year = length(extend)) %>% 
+					group_by(country) %>% 
+					expand(year = extend) %>%
+					left_join(PCV7Data) %>% 
+					mutate(PCV7_fit = case_when(year >=2018 ~ 0, TRUE ~ PCV7cov),
+						   PCV7_L95 = case_when(year >=2018 ~ 0, TRUE ~ (PCV7cov - 5)), # Define 95% CI as +/- 5% points
+						   PCV7_U95 = case_when(year >=2018 ~ 0, TRUE ~ pmin((PCV7cov + 5),100))) 
+						   
 # PCV-10 uptake data
 PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 uptake data
 				melt() %>%
@@ -386,8 +398,6 @@ PCV10Data <- read_csv("PCV10coverage.csv", col_names=TRUE) %>% # Read in PCV10 u
 
 
 # Forecast PCV-10 uptake
-extend <- seq(min(PCV10Data$year), 2040)
-
 PCV10uptake <- PCV10Data %>%
 					mutate(year = length(extend)) %>% 
 					group_by(country) %>% 
@@ -445,7 +455,7 @@ PCV13uptake <- PCV13uptake %>%
 						PCV13_L95 = case_when(country == "Spain" & year >= 2018 ~ 48 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
 						PCV13_U95 = case_when(country == "Spain" & year >= 2018 ~ pmin(48 + 5, 100), TRUE ~ PCV13_U95))
 
-PCVuptake <- full_join(PCV7Data, PCV10uptake, by=c("country", "year")) %>%
+PCVuptake <- full_join(PCV7uptake, PCV10uptake, by=c("country", "year")) %>%
 			 full_join(PCV13uptake, by=c("country", "year"))
 
 # Belgium is switching back to PCV-13 from PCV-10 (2020)
@@ -671,7 +681,7 @@ fluCoverage_ts <- summFluCov %>% filter(!is.na(fluCov65plus_int)) %>%
 								 as_tsibble(index=year, key=country)  # define tsibble with country as key and year as index
 
 # Fit to interpolated data					
-fluCoverage_fit <- fluCoverage_ts %>% filter(country == "Germany") %>% model(ets = ETS(box_cox(fluCov65plus_int, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus_int, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 fluCoverage_fitted <- fluCoverage_fit %>%
 						fitted() %>%
@@ -712,20 +722,16 @@ ggplot(data = summFluCov, aes(x=year)) +
   		guides(fill=guide_legend(title="")) +
 	labs(title = "Uptake of seasonal influenza vaccination in over 65s", y = "")
 
-
-# Combine vaccination coverage data
-vaccCoverage <- full_join(PCV7Data, PCV10Data, by=c("country", "year")) %>%
-				full_join(PCV13Data) %>%
-				full_join(summFluCov)
-
-# Combine demographic and vaccination predictors
-predictors <- full_join(popProportions, childcare0to2) %>%
-				full_join(vaccCoverage) 
+# Combine all predictor variables (socio-demographic and vaccination uptake)
+predictors <- full_join(popProportions, childcare0to2, by=c("country", "year")) %>%
+			  full_join(PCVuptake) %>%
+			  full_join(summFluCov)
+			  
 predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))  
  
 predictors <- as_tibble(predictors) %>%
 				arrange(country, date) %>%
-				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7cov, PCV10_fit, PCV13_fit, flu65plus_fit)
+				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit)
 	
 ################# 
 ## Projections ##
