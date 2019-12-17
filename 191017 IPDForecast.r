@@ -9,6 +9,7 @@ library(tsibble)
 library(fable)
 #library(feasts)
 library(fabletools)
+library(zoo)
 
 myColours <- c("26 107 133", "241 214 118", "168 45 23")
 ECDCcol <- sapply(strsplit(myColours, " "), function(x)
@@ -392,38 +393,22 @@ PCV10uptake <- PCV10Data %>%
 					group_by(country) %>% 
 					expand(year = extend) %>%
 					left_join(PCV10Data) %>% 
-					mutate(PCV10_fit = rollmean(PCV10cov, 2, align = "right", fill = NA) %>%  # Average or previous 2 years' uptake
+					mutate(PCV10_fit = rollmean(PCV10cov, 2, align = "right", fill = NA) %>%  # Average of previous 2 years' uptake
 									  lag(1)) %>%
 					fill(PCV10_fit, .direction = "down") %>%
-					mutate(PCV10_fit = case_when(year < 2017 ~ NA_real_, TRUE ~ PCV10_fit),
-						   PCV10_L95 = PCV10_fit - 5, # Define 95% CI as +/- 5% points
-						   PCV10_U95 = pmin(PCV10_fit + 5, 100)) 
+					mutate(PCV10_fit = case_when(year <= 2017 ~ PCV10cov, TRUE ~ PCV10_fit),
+						   PCV10_L95 = case_when(year <= 2017 ~ NA_real_, TRUE ~ (PCV10_fit - 5)), # Define 95% CI as +/- 5% points
+						   PCV10_U95 = case_when(year <= 2017 ~ NA_real_, TRUE ~ pmin((PCV10_fit + 5),100))) 
 
 # N.B. Need manual intervention for countries with less than two years equilibrium uptake data: Poland
 PCV10uptake <- PCV10uptake %>% 
 				mutate(PCV10_fit  = case_when(country == "Poland" & year >= 2018 ~ 94, TRUE ~ PCV10_fit),
 						PCV10_L95 = case_when(country == "Poland" & year >= 2018 ~ 94 - 5, TRUE ~ PCV10_L95), # Define 95% CI as +/- 5% points
-						PCV10_U95 = case_when(country == "Poland" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV10_U95)) 
-
-									
-ggplot(data = PCV10uptake, aes(x=year)) +
-  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
-  geom_point(aes(y=PCV10cov), col=ECDCcol[1]) +
-  geom_line(aes(y=PCV10_fit), col=ECDCcol[1]) +
-  geom_ribbon(aes(x=year,ymin=PCV10_L95, ymax=PCV10_U95), fill=ECDCcol[1], alpha=.5) +
-  geom_line(aes(y=PCV10_fit), col="black") +
-    ylim(0,100)+
-   theme(panel.grid.major = element_blank(), 
-		panel.grid.minor = element_blank(), 
-		panel.background = element_blank(),
-		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
-		axis.text.x.top = element_text(vjust = -0.5)) +
-		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
-  		guides(fill=guide_legend(title="")) +
-	labs(title = "Uptake of PCV-10 vaccination in children", y = "")
-
-
+						PCV10_U95 = case_when(country == "Poland" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV10_U95)) %>%
+				mutate(PCV10_fit  = case_when(country == "Belgium" & year >= 2018 ~ 94, TRUE ~ PCV10_fit),
+						PCV10_L95 = case_when(country == "Belgium" & year >= 2018 ~ 94 - 5, TRUE ~ PCV10_L95), # Define 95% CI as +/- 5% points
+						PCV10_U95 = case_when(country == "Belgium" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV10_U95))
+		
 # PCV-13 uptake data
 PCV13Data <- read_csv("PCV13coverage.csv", col_names=TRUE) %>% # Read in PCV13 uptake data
 				melt() %>%
@@ -438,21 +423,59 @@ PCV13uptake <- PCV13Data %>%
 					group_by(country) %>% 
 					expand(year = extend) %>%
 					left_join(PCV13Data) %>% 
-					mutate(PCV13_fit = rollmean(PCV13cov, 2, align = "right", fill = NA) %>%  # Average or previous 3 years uptake
+					mutate(PCV13_fit = rollmean(PCV13cov, 2, align = "right", fill = NA) %>%  # Average of previous 2 years uptake
 									  lag(1)) %>%
 					fill(PCV13_fit, .direction = "down") %>%
-					mutate(PCV13_fit = case_when(year < 2018 ~ NA_real_, TRUE ~ PCV13_fit),
-						   PCV13_L95 = PCV13_fit - 5, # Define 95% CI as +/- 5% points
-						   PCV13_U95 = pmin(PCV13_fit + 5, 100)) 
+					mutate(PCV13_fit = case_when(year <= 2017 ~ PCV13cov, TRUE ~ PCV13_fit),
+						   PCV13_L95 = case_when(year <= 2017 ~ NA_real_, TRUE ~ (PCV13_fit - 5)), # Define 95% CI as +/- 5% points
+						   PCV13_U95 = case_when(year <= 2017 ~ NA_real_, TRUE ~ pmin((PCV13_fit + 5),100))) 
 
-# N.B. Need manual intervention for countries with less than two years equilibrium uptake data: Romania
+# N.B. Need manual intervention for countries with less than two years equilibrium uptake data: Romania, Portugal, Belgium, Spain
 PCV13uptake <- PCV13uptake %>% 
-				mutate(PCV13_fit  = case_when(country == "Romania" & year >= 2018 ~ 94, TRUE ~ PCV13_fit),
-						PCV13_L95 = case_when(country == "Romania" & year >= 2018 ~ 94 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
-						PCV13_U95 = case_when(country == "Romania" & year >= 2018 ~ pmin(94 + 5, 100), TRUE ~ PCV13_U95)) 
+				mutate(PCV13_fit  = case_when(country == "Romania" & year >= 2018 ~ 75, TRUE ~ PCV13_fit),
+						PCV13_L95 = case_when(country == "Romania" & year >= 2018 ~ 75 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+						PCV13_U95 = case_when(country == "Romania" & year >= 2018 ~ pmin(75 + 5, 100), TRUE ~ PCV13_U95)) %>%
+				mutate(PCV13_fit  = case_when(country == "Portugal" & year >= 2018 ~ 97, TRUE ~ PCV13_fit),
+						PCV13_L95 = case_when(country == "Portugal" & year >= 2018 ~ 97 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+						PCV13_U95 = case_when(country == "Portugal" & year >= 2018 ~ pmin(97 + 5, 100), TRUE ~ PCV13_U95)) %>%
+				mutate(PCV13_fit  = case_when(country == "Belgium" & (year == 2017 | year == 2018) ~ 0, TRUE ~ PCV13_fit),
+						PCV13_L95 = case_when(country == "Belgium" & year >= 2018 ~ 0, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+						PCV13_U95 = case_when(country == "Belgium" & year >= 2018 ~ 5, TRUE ~ PCV13_U95)) %>%
+				mutate(PCV13_fit  = case_when(country == "Spain" & year >= 2018 ~ 48, TRUE ~ PCV13_fit),
+						PCV13_L95 = case_when(country == "Spain" & year >= 2018 ~ 48 - 5, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+						PCV13_U95 = case_when(country == "Spain" & year >= 2018 ~ pmin(48 + 5, 100), TRUE ~ PCV13_U95))
+
+PCVuptake <- full_join(PCV7Data, PCV10uptake, by=c("country", "year")) %>%
+			 full_join(PCV13uptake, by=c("country", "year"))
+
+# Belgium is switching back to PCV-13 from PCV-10 (2020)
+PCVuptake <- PCVuptake %>% mutate(PCV13_fit = case_when(country == "Belgium" & year >= 2020 ~ PCV10_fit, TRUE ~ PCV13_fit),
+								  PCV13_L95 = case_when(country == "Belgium" & year >= 2020 ~ PCV10_L95, TRUE ~ PCV13_L95), # Define 95% CI as +/- 5% points
+								  PCV13_U95 = case_when(country == "Belgium" & year >= 2020 ~ PCV10_U95, TRUE ~ PCV13_U95)) %>%
+							mutate(PCV10_fit = case_when(country == "Belgium" & year >= 2020 ~ 0, TRUE ~ PCV10_fit),
+								   PCV10_L95 = case_when(country == "Belgium" & year >= 2020 ~ 0, TRUE ~ PCV10_L95), # Define 95% CI as +/- 5% points
+								   PCV10_U95 = case_when(country == "Belgium" & year >= 2020 ~ 0, TRUE ~ PCV10_U95)) 
+					  
+# Plot projections of uptake of PCV vaccination					
+ggplot(data = PCVuptake, aes(x=year)) +
+  facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
+  #geom_line(aes(y=PCV10_fit), col=ECDCcol[1]) +
+  geom_point(aes(y=PCV10cov), col=ECDCcol[1]) +
+  geom_ribbon(aes(x=year,ymin=PCV10_L95, ymax=PCV10_U95), fill=ECDCcol[1], alpha=.5) +
+  geom_line(aes(y=PCV10_fit), col="black") +
+    ylim(0,100)+
+   theme(panel.grid.major = element_blank(), 
+		panel.grid.minor = element_blank(), 
+		panel.background = element_blank(),
+		axis.line = element_line(colour = "black"),
+		text = element_text(size=14),
+		axis.text.x.top = element_text(vjust = -0.5)) +
+		scale_x_continuous(breaks = seq(2005, 2040, by = 10)) +
+  		guides(fill=guide_legend(title="")) +
+	labs(title = "Uptake of PCV-10 vaccination in children", y = "")
 
 												
-ggplot(data = PCV13uptake, aes(x=year)) +
+ggplot(data = PCVuptake, aes(x=year)) +
   facet_wrap(~ country) + #, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
   geom_point(aes(y=PCV13cov), col=ECDCcol[1]) +
   geom_line(aes(y=PCV13_fit), col=ECDCcol[1]) +
@@ -485,33 +508,6 @@ ggplot(data = PCV7Data, aes(x=year)) +
 		guides(fill=guide_legend(title=""))+
 	labs(title = "PCV7 coverage in children", y = "")
 
-ggplot(data = PCV10Data, aes(x=year)) +
-	facet_wrap(~country) +
-	geom_line(aes(y=PCV10cov), col=ECDCcol[1]) +
-	scale_color_manual(values = colours1, guide = FALSE) +
-	scale_fill_manual(values = colours1, guide = FALSE) +
-	theme(panel.grid.major = element_blank(), 
-		panel.grid.minor = element_blank(), 
-		panel.background = element_blank(),
-		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
-		axis.text.x.top = element_text(vjust = -0.5)) +
-		guides(fill=guide_legend(title=""))+
-	labs(title = "PCV10 coverage in children", y = "")
-					
-ggplot(data = PCV13Data, aes(x=year)) +
-	facet_wrap(~country) +
-	geom_line(aes(y=PCV13cov), col=ECDCcol[1]) +
-	scale_color_manual(values = colours1, guide = FALSE) +
-	scale_fill_manual(values = colours1, guide = FALSE) +
-	theme(panel.grid.major = element_blank(), 
-		panel.grid.minor = element_blank(), 
-		panel.background = element_blank(),
-		axis.line = element_line(colour = "black"),
-		text = element_text(size=14),
-		axis.text.x.top = element_text(vjust = -0.5)) +
-		guides(fill=guide_legend(title=""))+
-	labs(title = "PCV13 coverage in children", y = "")
 										
 					
 # PPV coverage
@@ -729,7 +725,7 @@ predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))
  
 predictors <- as_tibble(predictors) %>%
 				arrange(country, date) %>%
-				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare0to2, PCV7cov, PCV10cov, PCV13cov, fluCov55to58, fluCov59, fluCov60to64, fluCov65plus)
+				select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7cov, PCV10_fit, PCV13_fit, flu65plus_fit)
 	
 ################# 
 ## Projections ##
