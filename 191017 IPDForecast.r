@@ -21,7 +21,7 @@ colours1 <- colorRampPalette(ECDCcol)(11)
 EEA <- c("AT","BE","BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU", "IS", "IE", "IT", "LV", "LI", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "UK") 
 countryList <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", "France", "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania","Luxembourg", "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden", "UK" )
 countries <- tibble(GeoCode = EEA, country = countryList)
-countries <- add_row(countries, GeoCode = "SC", country = "Scotland")
+countriesScot <- add_row(countries, GeoCode = "SC", country = "Scotland")
 
 ########################		
 ## IPD incidence data ##
@@ -127,7 +127,7 @@ scotPop <- read_csv("ScotPop.csv", col_names=TRUE)   # Source: https://www.nrsco
 ###############
 ## Incidence ##
 ###############
-years1 <- seq(1998, 2018) 
+years1 <- seq(2002, 2017) 
 
 IPDData <- IPDData %>% filter(Classification == "CONF" & SubsetEpi == 1) %>% # Include only confirmed cases and select subset for epi. to avoid double-counting lab.results
 						left_join(tessyPop) %>%
@@ -144,7 +144,7 @@ incData <- incData %>% 	mutate(year = length(years1)) %>%
 						expand(year = years1) %>%
 						left_join(incData) %>%	
 						ungroup() %>%
-						select(-population, -total) %>%
+						select(-population) %>%
 						as_tsibble(index = year, key = c(country, ageGroup, groupType))
 					
 countryNo <- 9
@@ -175,16 +175,14 @@ countryNo <- 9
 ############################
 
 # Proportion of outcome by serotype
-propTypes <- incData %>% filter(groupType != "Not serotyped") %>% # 
+propTypes <- as_tibble(incData) %>% filter(groupType != "Not serotyped") %>% # 
 			   group_by(country, year, ageGroup, groupType) %>%
-               dplyr::summarise(n = sum(Total)) %>%
+               dplyr::summarise(n = sum(total)) %>%
 			   mutate(freq = n / sum(n))
 			   
 
-propTypes1 <- propTypes %>% filter(country == countries$code[countryNo])
-
 ## Trends in proportion of types, by country
-ggplot(data = propTypes1, aes(year, freq)) +
+ggplot(data = propTypes, aes(year, freq)) +
   geom_line(lwd = 0.7) +
   labs(x = "Year", y = "Proportion of typed samples") +
   facet_grid(groupType ~ ageGroup, labeller = label_wrap_gen(width = 2, multi_line = TRUE)) + # ,  scales = "free_y") + 
@@ -312,7 +310,7 @@ ggplot(data = popProportions %>% filter(year <= 2040), aes(x=year)) +
 
 # Proportion of children under three not in formal childcare
 childcare0to2 <- read_csv("childcare0to2.csv", col_names=TRUE) %>% # Source: EUROSTAT https://ec.europa.eu/eurostat/databrowser/view/tps00185/default/table?lang=en
-					gather(countries$name, key="country", value="childcare0to2") %>%
+					gather(countries$country, key="country", value="childcare0to2") %>%
 					select(country, year, childcare0to2) %>%
 					filter(country != "Liechtenstein")
 					#mutate(date = as.Date(ISOdate(year, 12, 31))) # set date to 31st December of given year
@@ -324,7 +322,7 @@ childcare_ts <- as_tsibble(childcare0to2, index=year, key=country) %>%# define t
 			   
 childcare_ts_short <- childcare_ts #%>% filter(year < 2016) # Remove later data points for out-of-sample validation. Forecast for the number of years that have bene excluded and then use accuracy() to assess.
 			   
-childcare_fit <- childcare_ts_short %>% model(ets = ETS(box_cox(proportion, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+childcare_fit <- childcare_ts_short %>% model(ets = ETS(box_cox(proportion, lambda = 0) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 childcare_fitted <- childcare_fit %>%
 						fitted() %>%
@@ -376,8 +374,6 @@ ggplot(data = childcare0to2, aes(x=year)) +
 
 					
 # PCV-7 uptake 
-extend <- seq(min(PCV7Data$year), 2040)
-
 PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 uptake data
 				melt() %>%
 				as_tibble() %>%
@@ -385,6 +381,8 @@ PCV7Data <- read_csv("PCV7coverage.csv", col_names=TRUE) %>% # Read in PCV7 upta
 				mutate(year = as.numeric(levels(year))[year], country = as_factor(country)) %>%
 				arrange(country) 
 				
+extend <- seq(min(PCV7Data$year), 2040)	
+		
 # Forecast PCV-7 uptake				
 PCV7uptake <- PCV7Data %>%
 					mutate(year = length(extend)) %>% 
@@ -536,32 +534,32 @@ PPV23Data <- read_csv("PPV23coverage.csv", col_names=TRUE) # Read in PPV23 cover
 # https://www.ecdc.europa.eu/sites/portal/files/documents/Seasonal-influenza-antiviral-use-EU-EEA-Member-States-December-2018_0.pdf 
 # N.B. UK is population weighted average of four regions
 fluCov55A <- read_csv("fluCov55A.csv", col_names=TRUE) %>%
-			gather(countries$name, key="country", value="fluCov55A") %>%
+			gather(countries$country, key="country", value="fluCov55A") %>%
 			select(country, year, fluCov55A) %>%	# influenza vaccination coverage in over 55s, administrative sample
 			mutate(country = as_factor(country))
 			
 fluCov59A <- read_csv("fluCov59A.csv", col_names=TRUE) %>%
-			gather(countries$name, key="country", value="fluCov59A") %>%
+			gather(countries$country, key="country", value="fluCov59A") %>%
 			select(country, year, fluCov59A) %>%	# influenza vaccination coverage in over 59s, administrative sample
 			mutate(country = as_factor(country))
 			
 fluCov60A <- read_csv("fluCov60A.csv", col_names=TRUE) %>%
-			gather(countries$name, key="country", value="fluCov60A") %>%
+			gather(countries$country, key="country", value="fluCov60A") %>%
 			select(country, year, fluCov60A) %>%	# influenza vaccination coverage in over 60s, administrative sample
 			mutate(country = as_factor(country))
 						
 fluCov60S <- read_csv("fluCov60S.csv", col_names=TRUE)  %>%
-			gather(countries$name, key="country", value="fluCov60S") %>%
+			gather(countries$country, key="country", value="fluCov60S") %>%
 			select(country, year, fluCov60S) %>%	# influenza vaccination coverage in over 60s, survey sample
 			mutate(country = as_factor(country))
 			
 fluCov65A <- read_csv("fluCov65A.csv", col_names=TRUE) %>%
-			gather(countries$name, key="country", value="fluCov65A") %>%
+			gather(countries$country, key="country", value="fluCov65A") %>%
 			select(country, year, fluCov65A) %>%	# influenza vaccination coverage in over 65s, administrative sample
 			mutate(country = as_factor(country))
 			
 fluCov65S <- read_csv("fluCov65S.csv", col_names=TRUE) %>%
-			gather(countries$name, key="country", value="fluCov65S") %>%
+			gather(countries$country, key="country", value="fluCov65S") %>%
 			select(country, year, fluCov65S) %>%	# influenza vaccination coverage in over 65s, survey sample
 			mutate(country = as_factor(country))
 
@@ -689,7 +687,7 @@ fluCoverage_ts <- summFluCov %>% filter(!is.na(fluCov65plus_int)) %>%
 								 as_tsibble(index=year, key=country)  # define tsibble with country as key and year as index
 
 # Fit to interpolated data					
-fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus_int, lambda = 1) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
+fluCoverage_fit <- fluCoverage_ts %>% model(ets = ETS(box_cox(fluCov65plus_int, lambda = 0) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98))))# Fit damped model with additive error term
 
 fluCoverage_fitted <- fluCoverage_fit %>%
 						fitted() %>%
@@ -741,19 +739,23 @@ predictors$date <- as.Date(ISOdate(predictors$year, 12, 31))
 predictors_past <- as_tibble(predictors) %>%
 					arrange(country, date) %>%
 					select(year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
-					filter(year <= 2018)
+					filter(2002 <= year & year <= 2017)
 
 # Values of predictor variables from now until 2040 for making forecasts
 predictors_future <- as_tibble(predictors) %>%
 					 arrange(country, date) %>%
 					 select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
-					 filter(2018 < year &  year <= 2040)
+					 filter(2017 < year &  year <= 2040)
 					
 ################# 
 ## Projections ##
 #################
-full_join(incData, predictors_past)
+inc_predictors <- full_join(incData, predictors_past)
 
+test %>% filter(!is.na(incidence)) %>%
+		 aggregate_key(country * ageGroup, incidence = mean(na.omit(incidence))) %>%
+		 model(ets = ETS(box_cox(incidence, lambda = 0) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98)))) %>%
+		 reconcile(ets = min_trace(ets)) 
 
 #########################
 ## Plot incidence data ##
