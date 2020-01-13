@@ -741,21 +741,97 @@ predictors_past <- as_tibble(predictors) %>%
 					select(year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
 					filter(2002 <= year & year <= 2017)
 
-# Values of predictor variables from now until 2040 for making forecasts
-predictors_future <- as_tibble(predictors) %>%
+# List of age groups and vaccine groups
+groups <- IPDData %>% select(country, ageGroup, groupType) %>%
+					 unique() %>%
+					 expand(country, ageGroup, groupType)
+					 
+# Values of predictor variables from now until 2040 for making forecasts (splite in half due to memory limitations)
+predictors_future_1 <- as_tibble(predictors) %>%
 					 arrange(country, date) %>%
-					 select(date, year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
-					 filter(2017 < year &  year <= 2040)
-					
+					 select(year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
+					 filter(2017 < year & year <= 2040) %>%
+					 right_join(groups) %>%	
+					 select(country, ageGroup, groupType, year, everything()) %>%
+					 filter(country %in% countryList[c(1:15)]) %>%
+					 as_tsibble(key = c(country, ageGroup, groupType), index = year)
+					 
+predictors_future_2 <- as_tibble(predictors) %>%
+					 arrange(country, date) %>%
+					 select(year, country, prop0to14_int, prop65plus_int, prop80plus_int, childcare_fit, PCV7_fit, PCV10_fit, PCV13_fit, flu65plus_fit) %>%
+					 filter(2017 < year & year <= 2040) %>%
+					 right_join(groups) %>%	
+					 select(country, ageGroup, groupType, year, everything()) %>%
+					 filter(country %in% countryList[c(16:length(countryList))]) %>%
+					 as_tsibble(key = c(country, ageGroup, groupType), index = year)
+				
+predictors_future <- rbind(predictors_future_1, predictors_future_2)
+
+				
 ################# 
 ## Projections ##
 #################
 inc_predictors <- full_join(incData, predictors_past)
 
-test %>% filter(!is.na(incidence)) %>%
-		 aggregate_key(country * ageGroup, incidence = mean(na.omit(incidence))) %>%
-		 model(ets = ETS(box_cox(incidence, lambda = 0) ~ error("A") + trend(("Ad"), phi_range = c(0.88, 0.98)))) %>%
-		 reconcile(ets = min_trace(ets)) 
+agg1 <- inc_predictors %>% filter(!is.na(incidence)) %>%
+							#select(country, ageGroup, groupType, year, incidence, PCV10_fit)%>%
+							aggregate_key(country * ageGroup * groupType,
+											incidence = mean(na.omit(incidence)),
+											prop0to14_int = mean(na.omit(prop0to14_int)),
+											prop65plus_int = mean(na.omit(prop65plus_int)),
+											prop80plus_int = mean(na.omit(prop80plus_int)),
+											childcare_fit = mean(na.omit(childcare_fit)),
+											PCV7_fit = mean(na.omit(PCV7_fit)),
+											PCV10_fit = mean(na.omit(PCV10_fit)),
+											PCV13_fit = mean(na.omit(PCV13_fit)),
+											flu65plus_fit = mean(na.omit(flu65plus_fit)))
+											
+exoReg <- c("prop0to14_int", "prop65plus_int", "prop80plus_int", "childcare_fit", "PCV7_fit", "PCV10_fit", "PCV13_fit", "flu65plus_fit")
+							
+arima0 <- agg1 %>% model(lag0 = ARIMA(incidence ~ exoReg)) %>%
+					reconcile() 
+
+# Forecast without exogenous regressors					
+#forecast0 <- arima0	%>%	forecast(h=10)
+
+# Select a model to forecast
+select_model <- arima0 %>% filter(country == "Austria", ageGroup == "65-74", groupType == "PCV-13")
+
+# Plot residual errors
+bind_rows(
+  `Regression Errors` = residuals(select_model, type="regression"),
+  `ARIMA Errors` = residuals(select_model, type="innovation"),
+  .id = "type"
+) %>%
+  ggplot(aes(x = year, y = .resid)) +
+  geom_line() +
+  facet_grid(vars(type), scales = "free_y") +
+  xlab("Year") + ylab(NULL)
+
+# Filter for regressor values that correspond to the model to be forecasted
+select_future <- predictors_future %>%
+					aggregate_key(country * ageGroup * groupType,
+											prop0to14_int = mean(na.omit(prop0to14_int)),
+											prop65plus_int = mean(na.omit(prop65plus_int)),
+											prop80plus_int = mean(na.omit(prop80plus_int)),
+											childcare_fit = mean(na.omit(childcare_fit)),
+											PCV7_fit = mean(na.omit(PCV7_fit)),
+											PCV10_fit = mean(na.omit(PCV10_fit)),
+											PCV13_fit = mean(na.omit(PCV13_fit)),
+											flu65plus_fit = mean(na.omit(flu65plus_fit))) %>%
+					#select(country, ageGroup, groupType, year, PCV7_fit, PCV10_fit, PCV13_fit)  %>%
+					filter(country == "Austria", ageGroup == "65-74", groupType == "PCV-13")
+
+# Filter for preceding incidence data
+select_past <- incData %>% 
+				filter(country == "Austria", ageGroup == "65-74", groupType == "PCV-13")
+
+# Forecast using projections of exogenous regressors
+forecast1 <- select_model %>% forecast(new_data = select_future) 
+
+forecast1 %>% autoplot()
+							
+
 
 #########################
 ## Plot incidence data ##
