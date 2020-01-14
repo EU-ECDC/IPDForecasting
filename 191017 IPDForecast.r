@@ -10,10 +10,11 @@ library(fable)
 #library(feasts)
 library(fabletools)
 library(zoo)
+library(EcdcColors)
 
 myColours <- c("26 107 133", "241 214 118", "168 45 23")
 ECDCcol <- sapply(strsplit(myColours, " "), function(x)
-    rgb(x[1], x[2], x[3], maxColorValue=255))  # convert to hexadecimal
+   rgb(x[1], x[2], x[3], maxColorValue=255))  # convert to hexadecimal
 
 colours1 <- colorRampPalette(ECDCcol)(11)
 
@@ -31,7 +32,7 @@ PCVdates <- read_csv("VaccineDates.csv", col_names=TRUE)   # Read in dates of PC
 
 IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 		   mutate(
-				  ## Age groups. N.B. These must correspond with population groups (see above)
+				  ## Age groups. N.B. These must correspond with population groups 
 				  age = as.integer(Age),
 				  ageGroup = case_when(age < 5 ~ 1,		# 0-4
 							  age >= 5  & age < 15 ~ 2,	# 5-14
@@ -39,7 +40,7 @@ IPDData <- read_csv("190412IPD.csv", col_names=TRUE) %>%
 							  age >= 50 & age < 65 ~ 4,	# 50-64
 							  age >= 65 & age < 75 ~ 5,	# 65-74
 							  age >= 75 & age < 85 ~ 6,	# 75-84
-							  age >= 85 ~ 7) %>% 
+							  age >= 85 ~ 7) %>% # 85+
 							  factor(labels = c("0-4", "5-14", "15-49", "50-64", "65-74", "75-84", "85+")),
 							  
 				  ## Countries
@@ -852,6 +853,52 @@ forecast1 %>% autoplot()
 					  guides(fill=guide_legend(title="Vaccine type")) +
   ggtitle(paste("Incidence of IPD in 50+ year olds")) +
   theme(plot.title = element_text(hjust = 0.5))
-  
+
+# Proportion of cases by serotype...
+propTypes <- IPDData %>% filter(country != "NA") %>%
+						 group_by(country, year, groupType) %>%
+						 summarise(n = n()) %>%
+						 mutate(freq = n / sum(n))
+# ... and of those serotyped						 
+propTypes1 <- IPDData %>% filter(country != "NA", groupType != "Not serotyped") %>%
+						 group_by(country, year, groupType) %>%
+						 summarise(n = n()) %>%
+						 mutate(freq = n / sum(n))
+			  
+## Plot proportion of cases by grouped serotype...
+ggplot(data = propTypes, aes(x=year, y=freq)) +
+  geom_bar(stat="identity", aes(fill = factor(groupType, levels=c("Not serotyped", "Other", "PPV-23", "PCV-13", "PCV-10", "PCV-7")))) +  
+  scale_fill_manual(values = c("lightgrey", EcdcColors("qual", n=5))) +
+  labs(	x = "Year", y = "Proportion of cases") +
+  facet_wrap(~ country,  scales = "free_y") +
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=14),
+					  axis.text.x = element_text(size = rel(0.75), angle = 60),
+					  axis.text.x.top = element_text(vjust = -1.25)) +
+					  scale_x_continuous(breaks = seq(2005, 2016, by = 1)) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Confirmed cases of IPD in adults aged 50 or over")) +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# ...and of those serotyped
+ggplot(data = propTypes1, aes(x=year, y=freq)) +
+  geom_bar(stat="identity", aes(fill = factor(groupType, levels=c("Not serotyped", "Other", "PPV-23", "PCV-13", "PCV-10", "PCV-7")))) +  
+  scale_fill_manual(values = EcdcColors("qual", n=5))) +
+  labs(	x = "Year", y = "Proportion of cases") +
+  facet_wrap(~ country,  scales = "free_y") +
+  theme(panel.grid.major = element_blank(), 
+					  panel.grid.minor = element_blank(), 
+					  panel.background = element_blank(),
+					  axis.line = element_line(colour = "black"),
+					  text = element_text(size=14),
+					  axis.text.x = element_text(size = rel(0.75), angle = 60),
+					  axis.text.x.top = element_text(vjust = -0.5)) +
+					  scale_x_continuous(breaks = seq(2005, 2020, by = 5)) +
+					  guides(fill=guide_legend(title="Vaccine type")) +
+  ggtitle(paste("Confirmed cases of IPD in adults aged 50 or over")) +
+  theme(plot.title = element_text(hjust = 0.5))
   
   
