@@ -839,17 +839,18 @@ forecast1 %>% autoplot()
 #########################
 
  ## Incidence by country
-  ggplot(data = incData, aes(year, Incidence)) +
-  geom_bar(stat="identity", aes(fill = groupType)) +
+  ggplot(data = incData %>% filter(country != "NA"), aes(x = year, y = incidence)) +
+  geom_bar(stat="identity", aes(fill = factor(groupType, levels=c("Not serotyped", "Other", "PPV-23", "PCV-13", "PCV-10", "PCV-7")))) +
+  scale_fill_manual(values = c("lightgrey", EcdcColors("qual", n=5))) +
   labs(	x = "Year", y = "Incidence per 100,000") +
-  facet_wrap(~ country) + #,  scales = "free_y") +
+  facet_wrap(~ country,  scales = "free_y") +
   theme(panel.grid.major = element_blank(), 
 					  panel.grid.minor = element_blank(), 
 					  panel.background = element_blank(),
 					  axis.line = element_line(colour = "black"),
 					  text = element_text(size=14),
-					  axis.text.x = element_text(size = rel(0.75), angle = 60),
-					  axis.text.x.top = element_text(vjust = -0.5)) +
+					  axis.text.x = element_text(size = rel(0.9), angle = 90, vjust = -0.4)) +
+					  scale_x_continuous(breaks = seq(2006.5, 2017.5, by = 1), labels =  as.character(2006:2017)) +
 					  guides(fill=guide_legend(title="Vaccine type")) +
   ggtitle(paste("Incidence of IPD in 50+ year olds")) +
   theme(plot.title = element_text(hjust = 0.5))
@@ -876,17 +877,16 @@ ggplot(data = propTypes, aes(x=year, y=freq)) +
 					  panel.background = element_blank(),
 					  axis.line = element_line(colour = "black"),
 					  text = element_text(size=14),
-					  axis.text.x = element_text(size = rel(0.75), angle = 60),
-					  axis.text.x.top = element_text(vjust = -1.25)) +
-					  scale_x_continuous(breaks = seq(2005, 2016, by = 1)) +
+					  axis.text.x = element_text(size = rel(0.9), angle = 90, vjust = -0.4)) +
+					  scale_x_continuous(breaks = seq(2006.5, 2017.5, by = 1), labels =  as.character(2006:2017)) +
 					  guides(fill=guide_legend(title="Vaccine type")) +
   ggtitle(paste("Confirmed cases of IPD in adults aged 50 or over")) +
   theme(plot.title = element_text(hjust = 0.5))
 
 # ...and of those serotyped
 ggplot(data = propTypes1, aes(x=year, y=freq)) +
-  geom_bar(stat="identity", aes(fill = factor(groupType, levels=c("Not serotyped", "Other", "PPV-23", "PCV-13", "PCV-10", "PCV-7")))) +  
-  scale_fill_manual(values = EcdcColors("qual", n=5))) +
+  geom_bar(stat="identity", aes(fill = factor(groupType, levels=c("Other", "PPV-23", "PCV-13", "PCV-10", "PCV-7")))) +  
+  scale_fill_manual(values = EcdcColors("qual", n=5)) +
   labs(	x = "Year", y = "Proportion of cases") +
   facet_wrap(~ country,  scales = "free_y") +
   theme(panel.grid.major = element_blank(), 
@@ -894,9 +894,8 @@ ggplot(data = propTypes1, aes(x=year, y=freq)) +
 					  panel.background = element_blank(),
 					  axis.line = element_line(colour = "black"),
 					  text = element_text(size=14),
-					  axis.text.x = element_text(size = rel(0.75), angle = 60),
-					  axis.text.x.top = element_text(vjust = -0.5)) +
-					  scale_x_continuous(breaks = seq(2005, 2020, by = 5)) +
+					  axis.text.x = element_text(size = rel(0.9), angle = 90, vjust = 0.4)) +
+					  scale_x_continuous(breaks = seq(2006.5, 2017.5, by = 1), labels =  as.character(2006:2017)) +
 					  guides(fill=guide_legend(title="Vaccine type")) +
   ggtitle(paste("Confirmed cases of IPD in adults aged 50 or over")) +
   theme(plot.title = element_text(hjust = 0.5))
